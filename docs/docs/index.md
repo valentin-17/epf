@@ -2,7 +2,7 @@
 
 ## Description
 
-Forecasting electricity prices in theGerman day-ahead market withmachine learning algorithms
+Forecasting electricity prices in the German day-ahead market with machine learning algorithms
 
 ## Commands
 
