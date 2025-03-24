@@ -3,7 +3,7 @@
 
 This repository contains the code for the bachelors thesis "Forecasting electricity prices in the German day-ahead market with machine learning algorithms".
 
-The project-structure largely follows the how-to found here: https://drivendata.github.io/cookiecutter-data-science/
+The project-structure largely follows the how-to from cookiecutter data science [[1]](/references/refs.md)
 
 ---
 
@@ -37,10 +37,25 @@ Explanatory data analysis is done in ```epf/notebooks/exploratory_analysis.ipynb
 #### Feature Analysis
 
 For feature analysis all timeseries were read into pandas DataFrames. Timeseries with a quarter hourly frequency were 
-aggregated to the hour level using mean gruping. All Dataframes were then merged into a single DataFrame.
+aggregated to the hour level using mean gruping. All Dataframes were then merged into a single DataFrame. 
+Initial feature exploration shows that the features are seasonal and non stationary timeseries:
 
-The pearson correlation coefficients for the feature "Prices" are as follows:
+![Visual Feature Overview](/reports/figures/plot_overview.png)
+
+The pearson correlation coefficients for the feature "Prices" show a similar positive correlation between de_lu_prices 
+and the German load as well as the French load. Likewise all VRE generation features show a negative correlation with
+the prices, with the offshore wind generation having a slightly weaker correlation than onshore wind generation and
+solar generation.
 
 ![Price correlation coefficients](/reports/figures/de_lu_price_correlations.png)
 
 
+
+### Feature engineering
+
+Some timeseries (most notably de_lu_prices, ch_load and dk_load) have extreme outliers. 
+Outlier filtering is done using a hampel filter [[3]](/references/refs.md).
+Note that we cant use log transformation since there could be zero and negative values for which the log is not defined.
+After normalization the resulting distributions of the features are shown in the following plot:
+
+![Feature Distributions](/reports/figures/feature_distributions.png)
