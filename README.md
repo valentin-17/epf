@@ -53,7 +53,8 @@ solar generation.
 ### Feature engineering
 
 Some timeseries (most notably de_lu_prices, ch_load and dk_load) have extreme outliers. 
-Outlier filtering is done using a hampel filter [[3]](./references/refs.md).
+Outlier filtering is done using a hampel filter [[3]](./references/refs.md) with window size = 72 hours 
+and a threshold of 3 standard deviations.
 Note that we cant use log transformation since there could be zero and negative values for which the log is not defined.
 After normalization the resulting distributions of the features are shown in the following plot:
 

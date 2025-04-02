@@ -1,6 +1,9 @@
 # Data
 /data/
 
+# logs and misc
+/models/tuner/
+
 # Mac OS-specific storage files
 .DS_Store
 
