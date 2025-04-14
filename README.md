@@ -55,8 +55,6 @@ solar generation.
 
 ![Price correlation coefficients](./reports/figures/de_lu_price_correlations.png)
 
-
-
 ### Feature engineering
 
 Some timeseries (most notably de_lu_prices, ch_load and dk_load) have extreme outliers. 
