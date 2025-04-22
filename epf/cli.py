@@ -1,10 +1,10 @@
-import sys
 from typing import Optional
 
 import typer
 from loguru import logger
 
 from epf import __app_name__, __version__
+from epf.pipeline import EpfPipeline
 
 app = typer.Typer()
 
@@ -25,6 +25,13 @@ def main(
         ),
 ) -> None:
     return
+
+@app.command()
+def predict() -> None:
+    """ Predict using the model.
+    """
+    pipeline = EpfPipeline()
+    # TODO: complete predict command with methods from pipeline
 
 if __name__ == "__main__":
     app()

@@ -65,4 +65,4 @@ All timeseries are also deseasonalized using stl decomposition as RNNs perform w
 patterns [[7]](./references/refs.md).
 After normalization the resulting distributions of the features are shown in the following plot:
 
-![Feature Distributions](./reports/figures/normalized_data_distribution_first_window.png)
+![Feature Distributions](./reports/figures/normalized_data_distribution.png)
