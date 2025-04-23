@@ -1,8 +1,10 @@
+from pathlib import Path
 from typing import Optional
 
 import keras
+import numpy as np
 
-from epf.config import FeatureConfig, ModelConfig
+from epf.config import FeatureConfig, ModelConfig, MODELS_DIR
 
 
 class EpfPipeline:
@@ -10,26 +12,32 @@ class EpfPipeline:
         self,
         feature_config: FeatureConfig = FeatureConfig(),
         model_config: ModelConfig = ModelConfig(),
-        models: Optional[list[keras.Model]] = None
+        default_model_path: Path = MODELS_DIR,
+        model_name: Optional[str] = "lstm",
     ):
         """
         Initialize the pipeline with feature and model configurations.
 
         :param feature_config: Feature configuration.
         :param model_config: Model configuration.
-        :param models: List of models.
+        :param default_model_path: Default path to save the model.
+        :param model_name: Name of the model. If nothing is provided, the default lstm model is used.
         """
-        self.feature_config = feature_config
-        self.model_config = model_config
-        self.models = models
 
-    def load_data(self):
+        self.fc = feature_config
+        self.mc = model_config
+        self.model_path = default_model_path / model_name
+
+        self.model: keras.Model = keras.saving.load_model(self.model_path)
+        self.predictions = None
+
+    def _load_data(self):
         """
-        Load data using the feature configuration.
+        Load raw data and save it to interim directory using the feature configuration.
         """
         pass
 
-    def generate_features(self):
+    def _generate_features(self):
         """
         Generate features using the feature configuration.
         """
@@ -39,22 +47,26 @@ class EpfPipeline:
         """
         Train the models using the model configuration.
         """
-        pass
+        # self.model =
+        keras.saving.save_model(self.model, self.model_path)
 
-    def predict(self):
+    def predict(self, data: Path, model_path: Path):
         """
         Make predictions using the trained models.
-        """
-        pass
 
-    def save_model(self):
+        :param data: Path to the data for prediction.
+        :param model_path: Path to the trained model.
         """
-        Save the trained models.
-        """
-        pass
 
-    def load_model(self):
+        # Load the model
+        self.model = keras.saving.load_model(model_path, compile=True)
+
+        self.predictions = self.model.predict(data)
+
+    def save_predictions(self, output_path):
         """
-        Load the trained models.
+        Save the predictions to the specified output path.
+
+        :param output_path: Path to save the predictions.
         """
-        pass
+        self.predictions.to_csv(output_path, index=False)

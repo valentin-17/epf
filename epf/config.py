@@ -13,6 +13,7 @@ INTERIM_DATA_DIR = DATA_DIR / "interim"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 
 MODELS_DIR = PROJ_ROOT / "models"
+PREDICTIONS_DIR = MODELS_DIR / "predictions"
 
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
