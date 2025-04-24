@@ -1,7 +1,8 @@
-* [1] https://drivendata.github.io/cookiecutter-data-science/
-* [2] https://www.tensorflow.org/tutorials/structured_data/time_series
-* [3] https://medium.com/@migueloteropedrido/hampel-filter-with-python-17db1d265375
-* [4] https://pypi.org/project/holidays/
-* [5] https://realpython.com/python-typer-cli/
-* [6] https://github.com/drivendataorg/cyfi/blob/main/cyfi/cli.py
-* [7] https://www.sciencedirect.com/science/article/pii/S0169207020300996
+* [1] [Cookiecutter Data Science](https://drivendata.github.io/cookiecutter-data-science/)
+* [2] [Tensorflow Time Series Forecasting](https://www.tensorflow.org/tutorials/structured_data/time_series)
+* [3] [Hampel Filter](https://medium.com/@migueloteropedrido/hampel-filter-with-python-17db1d265375)
+* [4] [Holidays Library](https://pypi.org/project/holidays/)
+* [5] [Typer Cli Tutorial](https://realpython.com/python-typer-cli/)
+* [6] [Cookiecutter Data Science CYFI Project](https://github.com/drivendataorg/cyfi/blob/main/cyfi/cli.py)
+* [7] [Seasonal Decomposition for RNNs](https://www.sciencedirect.com/science/article/pii/S0169207020300996)
+* [8] [Typer Library](https://typer.tiangolo.com/)

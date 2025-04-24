@@ -1,31 +1,142 @@
 import keras
+import re
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 from matplotlib import pyplot as plt
 from sktime.transformations.series.impute import Imputer
 from sktime.transformations.series.outlier_detection import HampelFilter
+from statsmodels.tsa.seasonal import MSTL
 
 
-def detect_and_remove_outliers(feature, window_length, n_sigma, impute_method: str = None) -> pd.DataFrame:
+def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: int, impute_method: str = None) -> pd.DataFrame:
     """
-    Detect and remove outliers from features using Hampel Filter. Only imputes where outliers are present.
+    Detect and remove outliers from features using Hampel Filter. Only imputes data where outliers are present.
 
-    :param feature: The feature where outliers should be removed.
+    Hampel filter implementation from ``sktime.transformations.series.outlier_detection``.
+    See `Hampel Filter documentation <https://www.sktime.net/en/latest/api_reference/auto_generated/sktime.transformations.series.outlier_detection.HampelFilter.html>`_ for more information.
+
+    :param data: The dataframe to perform outlier removal on.
+    :type data: pd.DataFrame
+
     :param window_length: Window length for Hampel Filter.
+    :type window_length: int
+
     :param n_sigma: Number of standard deviations for outlier detection.
+    :type n_sigma: int
+
     :param impute_method: Method for imputing missing values.
+    :type impute_method: str
 
     :returns: DataFrame containing all features with outliers removed where applicable.
+    :rtype: pd.DataFrame
     """
     hampel = HampelFilter(window_length=window_length, n_sigma=n_sigma)
+
+    # use the default imputer if no impute method is specified
     imputer = Imputer(method=impute_method) if impute_method is not None else Imputer()
 
-    feature_hat = hampel.fit_transform(feature)
-    feature_imputed = imputer.fit_transform(feature_hat)
+    for col in data.columns:
+        if 'price' in col:
+            feature_hat = hampel.fit_transform(data[col])
+            feature_imputed = imputer.fit_transform(feature_hat)
 
-    return feature_imputed
+            # append new col with suffix hat
+            data[col + '_hat'] = feature_imputed
 
+            # drop touched col
+            data.drop(columns=[col], inplace=True)
+
+    return data
+
+
+def load_and_concat_data(file_paths: list, column_names: list) -> pd.DataFrame:
+    """
+    Load and concatenate data from multiple CSV files given by ``file_paths``.
+    NaN values are interpolated with ``pandas.DataFrame.interpolate(method='time')``
+
+    :param file_paths: List of file paths to the CSV files.
+    :param column_names: List of column names.
+
+    :returns: DataFrame for each feature containing raw data from the years 2023 - 2024.
+    :rtype: pd.DataFrame
+    """
+    df = []
+    for file_path in file_paths:
+        # Skip extra row for DK and FR prices because there is an extra disclaimer header row
+        if re.search(r'fr_prices|dk_._prices', file_path):
+            df.append(pd.read_csv(file_path, skiprows=3, names=column_names))
+        else:
+            df.append(pd.read_csv(file_path, header=1, names=column_names))
+
+    concat_data = pd.concat(df)
+    concat_data.reset_index(drop=True, inplace=True)
+    concat_data['timestamp'] = pd.to_datetime(concat_data['timestamp'])
+    concat_data.set_index('timestamp', inplace=True)
+
+    # if na values are present interpolate them based on the timestamp
+    if concat_data.isna().sum().sum() > 0:
+        concat_data.interpolate(method='time', inplace=True)
+
+    return concat_data
+
+
+def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)) -> tuple[pd.DataFrame, dict[str, MSTL]]:
+    """
+    Removes the seasonal component from each feature by multiple STL decomposition. Seasonal decomposition is done for
+    each period provided with param ``periods``.
+
+    MSTL implementation from ``statsmodels.tsa.seasonal``.
+    See `MSTL documentation <https://www.statsmodels.org/dev/generated/statsmodels.tsa.seasonal.MSTL.html>`_ for more information.
+
+    :param data: The dataframe to perform outlier removal on.
+    :type data: pd.DataFrame
+
+    :param periods: List of periods to remove from each feature.
+        Defaults to [24, 7 * 24].
+    :type periods: list[int]
+
+    :returns: The modified DataFrame with seasonal components removed and the seasonal components as dict of column names
+        and respective seasonal components.
+    :rtype: pd.DataFrame
+    """
+    seasonal_component = {}
+
+    for col in data.columns:
+        mstl = MSTL(data[col], periods=periods).fit()
+        # remove seasonal component from timeseries by adding all seasonal components and then subtracting from original timeseries
+        data[col + '_rm_seasonal'] = data[col] - sum(mstl.seasonal[f'seasonal_{p}'] for p in periods)
+        seasonal_component.update({col + '_rm_seasonal': mstl})
+        # drop touched cols
+        data.drop(columns=[col], inplace=True)
+
+    return data, seasonal_component
+
+
+def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Splits data into train, validation and test sets.
+    Train and Validation params are the upper boundary for their respective splits. Lower boundaries are calculated.
+
+    :param data: DataFrame to be split.
+    :type data: pd.DataFrame
+
+    :param train: Fraction of data to be used for training,
+        defaults to 0.7
+    :type train: float
+
+    :param validation: Fraction of data to be used for validation,
+        defaults to 0.9
+    :type validation: float
+
+    :returns: Train, Validation and Test DataFrames
+    :rtype: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+    """
+
+    train_split = int(len(data) * train)
+    validation_split = int(len(data) * validation)
+
+    return data[0:train_split], data[train_split:validation_split], data[validation_split:]
 
 # code taken from [3] /references/refs.md
 class WindowGenerator():
@@ -147,3 +258,39 @@ class WindowGenerator():
                 plt.legend()
 
         plt.xlabel('Time [h]')
+
+"""
+class ModelBuilder():
+    def default_model_builder(hp, dropout: bool = True):
+        model = keras.Sequential()
+
+        # Tune the number of lstm layers choose from 32 up to 512 with steps of 32
+        hp_units = hp.Int('units', min_value=32, max_value=512, step=32)
+
+        # Tune the learning rate for the optimizer
+        # Choose an optimal value from 0.01, 0.001, or 0.0001
+        hp_learning_rate = hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])
+
+        # Tune the dropout rate
+        # Choose optimal value between 0.2 and 0.5
+        hp_dropout_rate = hp.Choice('dropout_rate', values=[0.2, 0.3, 0.4, 0.5])
+
+        # build model
+        model.add(keras.layers.LSTM(hp_units, return_sequences=False))
+        # add dropout layer
+        if dropout:
+            model.add(keras.layers.Dropout(hp_dropout_rate))
+        model.add(keras.layers.Dense(OUT_STEPS * num_features,
+                                     kernel_initializer=keras.initializers.zeros()))
+        # add dropout layer
+        if dropout:
+            model.add(keras.layers.Dropout(hp_dropout_rate))
+        model.add(keras.layers.Reshape([OUT_STEPS, num_features]))
+
+        # compile the model
+        model.compile(loss=keras.losses.MeanSquaredError(),
+                      optimizer=keras.optimizers.Adam(learning_rate=hp_learning_rate),
+                      metrics=[keras.metrics.MeanAbsoluteError()])
+
+        return model
+"""

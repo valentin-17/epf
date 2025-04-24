@@ -23,14 +23,28 @@ class FeatureConfig:
     """
     Configuration class for feature generation.
 
-    :param INPUT_PATHS: Dictionary containing raw data file names.
-    :param COL_NAMES: List of column names for the features.
-    :param FEATURE_DICT: Dict of available features with selector field if the feature should be considered.
-    :param WINDOW_LENGTH: Length of the window for the Hampel filter.
-    :param N_SIGMA: Number of standard deviations for the Hampel filter.
-    :param METHOD: Method for imputation in the Hampel filter.
-    """
+    :param INPUT_PATHS: Dict containing raw data file names.
+    :type INPUT_PATHS: dict[str,list[str]]
 
+    :param COL_NAMES: List of column names for the features.
+    :type COL_NAMES: list[str]
+
+    :param TO_RESAMPLE: Dict of columns that need to be resampled to hourly frequency.
+        Use value field to specify which frequency to use for resampling (e.g. 4 if original frequency is quarter hourly).
+    :type TO_RESAMPLE: dict[str, int]
+
+    :param FEATURE_DICT: Dict of available features with selector field if the feature should be considered.
+    :type FEATURE_DICT: dict[str, dict[str, int | str | bool]]
+
+    :param WINDOW_LENGTH: Length of the window for the Hampel filter.
+    :type WINDOW_LENGTH: int
+
+    :param N_SIGMA: Number of standard deviations for the Hampel filter.
+    :type N_SIGMA: int
+
+    :param METHOD: Method for imputation in the Hampel filter.
+    :type METHOD: str
+    """
     INPUT_PATHS = {
         'de_prices': ['de_prices_2023.csv', 'de_prices_2024.csv'],
         'de_load': ['de_load_2023.csv', 'de_load_2024.csv'],
@@ -66,6 +80,16 @@ class FeatureConfig:
         'dk2_prices',
         'fr_prices'
     ]
+
+    TO_RESAMPLE = {
+        'de_load': 4,
+        'de_solar_gen': 4,
+        'de_wind_gen_offshore': 4,
+        'de_wind_gen_onshore': 4,
+        'de_gas_gen': 4,
+        'de_lignite_gen': 4,
+        'de_hard_coal_gen': 4
+    }
 
     FEATURE_DICT = {
         # prices
@@ -190,7 +214,28 @@ class FeatureConfig:
     N_SIGMA = 3
     METHOD = 'nearest'
 
+    # STL Decompose Params
+    SEASONAL_OUT_PATH = PROCESSED_DATA_DIR
+    PERIODS: list[int] = [24, 7 * 24]
+
+    # feature engineering
+    GENERATE_LAGS: bool = False
+    GENERATE_DUMMIES: bool = True
+
 class ModelConfig:
-    """ Configuration class for model building and training.
     """
-    USE_DROPOUT = True
+    Configuration class for model building and training.
+
+    :param TRAIN_SPLIT: Upper boundary for the training split.
+    :type TRAIN_SPLIT: float
+
+    :param VALIDATION_SPLIT: Upper boundary for the validation split.
+    :type VALIDATION_SPLIT: float
+
+    :param USE_DROPOUT: Whether to use dropout when building the model.
+    :type USE_DROPOUT: bool
+    """
+    TRAIN_SPLIT: float = 0.7
+    VALIDATION_SPLIT: float = 0.9
+
+    USE_DROPOUT: bool = True

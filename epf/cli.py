@@ -26,7 +26,7 @@ def main(
             help="Show app version.",
         ),
 ) -> None:
-    return
+    pass
 
 @app.command()
 def train(
@@ -42,6 +42,11 @@ def train(
         default= "new_model",
         help= "Name of the model to train.",
     ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        "-o",
+        help= "Overwrite the existing model."),
 ) -> None:
     """
     Train the model.
@@ -70,7 +75,11 @@ def predict(
         default = "predictions.csv",
         help= "Name of the output file.",
     ),
-    overwrite: bool = typer.Option(False, "--overwrite", "-o", help="Overwrite existing files"),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        "-o",
+        help="Overwrite existing files"),
 ) -> None:
     """
     Predict prices for the given dataset using the specified model.
@@ -101,8 +110,7 @@ def predict(
     output_path = output_dir / output_name
 
     pipeline = EpfPipeline()
-    pipeline.predict(data_path, model)
-    pipeline.save_predictions(output_path)
+    pipeline.predict(data_path, model, output_path)
     # TODO: complete predict command with methods from pipeline
 
 if __name__ == "__main__":
