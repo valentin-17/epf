@@ -30,13 +30,9 @@ def main(
 
 @app.command()
 def train(
-    model_builder: str  =typer.Option(
+    model_builder: str = typer.Option(
         exists = True,
-        help= "The model builder to use for training. Options: lstm, cnn, gru.",
-    ),
-    model_dir: Path = typer.Option(
-        default = "models",
-        help= "Path to save the trained model.",
+        help= "The model builder to use for training. Options: LSTM, GRU, CONV.",
     ),
     model_name: str = typer.Option(
         default= "new_model",
@@ -53,8 +49,9 @@ def train(
 
 
     """
-    pipeline = EpfPipeline()
-    pipeline.train()
+    logger.info(f"Training {model_builder}")
+    #pipeline = EpfPipeline()
+    #pipeline.train(model_builder, model_name, overwrite)
 
 @app.command()
 def predict(

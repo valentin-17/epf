@@ -2,47 +2,46 @@ from pathlib import Path
 
 from loguru import logger
 
-
 # Paths
-PROJ_ROOT = Path(__file__).resolve().parents[1]
+PROJ_ROOT: Path = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
-DATA_DIR = PROJ_ROOT / "data"
-RAW_DATA_DIR = DATA_DIR / "raw"
-INTERIM_DATA_DIR = DATA_DIR / "interim"
-PROCESSED_DATA_DIR = DATA_DIR / "processed"
+DATA_DIR: Path = PROJ_ROOT / "data"
+RAW_DATA_DIR: Path = DATA_DIR / "raw"
+INTERIM_DATA_DIR: Path = DATA_DIR / "interim"
+PROCESSED_DATA_DIR: Path = DATA_DIR / "processed"
 
-MODELS_DIR = PROJ_ROOT / "models"
-PREDICTIONS_DIR = MODELS_DIR / "predictions"
+MODELS_DIR: Path = PROJ_ROOT / "models"
+PREDICTIONS_DIR: Path = MODELS_DIR / "predictions"
 
-REPORTS_DIR = PROJ_ROOT / "reports"
-FIGURES_DIR = REPORTS_DIR / "figures"
+REPORTS_DIR: Path = PROJ_ROOT / "reports"
+FIGURES_DIR: Path = REPORTS_DIR / "figures"
 
 
 class FeatureConfig:
     """
     Configuration class for feature generation.
 
-    :param INPUT_PATHS: Dict containing raw data file names.
+    :ivar INPUT_PATHS: Dict containing raw data file names.
     :type INPUT_PATHS: dict[str,list[str]]
 
-    :param COL_NAMES: List of column names for the features.
+    :ivar COL_NAMES: List of column names for the features.
     :type COL_NAMES: list[str]
 
-    :param TO_RESAMPLE: Dict of columns that need to be resampled to hourly frequency.
+    :ivar TO_RESAMPLE: Dict of columns that need to be resampled to hourly frequency.
         Use value field to specify which frequency to use for resampling (e.g. 4 if original frequency is quarter hourly).
     :type TO_RESAMPLE: dict[str, int]
 
-    :param FEATURE_DICT: Dict of available features with selector field if the feature should be considered.
+    :ivar FEATURE_DICT: Dict of available features with selector field if the feature should be considered.
     :type FEATURE_DICT: dict[str, dict[str, int | str | bool]]
 
-    :param WINDOW_LENGTH: Length of the window for the Hampel filter.
+    :ivar WINDOW_LENGTH: Length of the window for the Hampel filter.
     :type WINDOW_LENGTH: int
 
-    :param N_SIGMA: Number of standard deviations for the Hampel filter.
+    :ivar N_SIGMA: Number of standard deviations for the Hampel filter.
     :type N_SIGMA: int
 
-    :param METHOD: Method for imputation in the Hampel filter.
+    :ivar METHOD: Method for imputation in the Hampel filter.
     :type METHOD: str
     """
     INPUT_PATHS = {
@@ -172,7 +171,7 @@ class FeatureConfig:
         },
         # loads
         'de_load_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Load',
             'is-numerical': True
         },
@@ -222,20 +221,98 @@ class FeatureConfig:
     GENERATE_LAGS: bool = False
     GENERATE_DUMMIES: bool = True
 
+
 class ModelConfig:
     """
     Configuration class for model building and training.
 
-    :param TRAIN_SPLIT: Upper boundary for the training split.
+    :ivar TRAIN_SPLIT: Upper boundary for the training split.
     :type TRAIN_SPLIT: float
 
-    :param VALIDATION_SPLIT: Upper boundary for the validation split.
+    :ivar VALIDATION_SPLIT: Upper boundary for the validation split.
     :type VALIDATION_SPLIT: float
 
-    :param USE_DROPOUT: Whether to use dropout when building the model.
+    :ivar MAX_EPOCHS: The upper boundary for epochs used during training.
+    :type MAX_EPOCHS: int
+
+    :ivar OUT_STEPS: The amount of timesteps to predict.
+    :type OUT_STEPS: int
+
+    :ivar UNIT_MIN_VALUE: The minimum Value for units.
+    :type UNIT_MIN_VALUE: int
+
+    :ivar UNIT_MAX_VALUE: The maximum Value for units.
+    :type UNIT_MAX_VALUE: int
+
+    :ivar UNIT_MAX_VALUE_CONV: The maximum Value for units when a convolutional layer is used.
+    :type UNIT_MAX_VALUE_CONV: int
+
+    :ivar UNIT_STEP: The amount to increment unit during hyperparameter search.
+    :type UNIT_STEP: int
+
+    :ivar KERNEL_SIZE_MIN_VALUE: The minimum value for the kernel size. This only applies for convolutional layers.
+    :type KERNEL_SIZE_MIN_VALUE: int
+
+    :ivar KERNEL_SIZE_MAX_VALUE: The maximum value for the kernel size. This only applies for convolutional layers.
+    :type KERNEL_SIZE_MAX_VALUE: int
+
+    :ivar KERNEL_SIZE_STEP: The amount to increment kernel size during hyperparameter search.
+    :type KERNEL_SIZE_STEP: int
+
+    :ivar LEARNING_RATE: The learning rate for the optimizer.
+    :type LEARNING_RATE: list[float]
+
+    :ivar DROPOUT_RATE_MIN_VALUE: The minimum value for the dropout rate. This only applies if dropout is used.
+    :type DROPOUT_RATE_MIN_VALUE: float
+
+    :ivar DROPOUT_RATE_MAX_VALUE: The maximum value for the dropout rate. This only applies if dropout is used.
+    :type DROPOUT_RATE_MAX_VALUE: float
+
+    :ivar DROPOUT_RATE_STEP: The amount to increment dropout rate during hyperparameter search.
+    :type DROPOUT_RATE_STEP: float
+
+    :ivar USE_DROPOUT: Whether to use dropout when building the model.
     :type USE_DROPOUT: bool
+
+    :ivar NUM_LAYERS_MIN: The minimum number of hidden layers in the model.
+    :type NUM_LAYERS_MIN: int
+
+    :ivar NUM_LAYERS_MAX: The maximum number of hidden layers in the model.
+    :type NUM_LAYERS_MAX: int
+
+    :ivar NUM_LAYERS_STEP: The amount to increment number of hidden layers during hyperparameter search.
+    :type NUM_LAYERS_STEP: int
+
+    :ivar LABEL_COL: Column name to use as label.
+    :type LABEL_COL: str
     """
+
     TRAIN_SPLIT: float = 0.7
     VALIDATION_SPLIT: float = 0.9
 
+    MAX_EPOCHS: int = 20
+    OUT_STEPS: int = 24
+
+    # hp tuner params
+    UNIT_MIN_VALUE: int = 32
+    UNIT_MAX_VALUE: int = 512
+    UNIT_MAX_VALUE_CONV: int = 2048
+    UNIT_STEP: int = 32
+
+    KERNEL_SIZE_MIN_VALUE: int = 1
+    KERNEL_SIZE_MAX_VALUE: int = 10
+    KERNEL_SIZE_STEP: int = 1
+
+    LEARNING_RATE: list[float] = [1e-2, 1e-3, 1e-4]
+
+    DROPOUT_RATE_MIN_VALUE: float = 0
+    DROPOUT_RATE_MAX_VALUE: float = 1
+    DROPOUT_RATE_STEP: float = 0.05
+
     USE_DROPOUT: bool = True
+
+    NUM_LAYERS_MIN: int = 0
+    NUM_LAYERS_MAX: int = 5
+    NUM_LAYERS_STEP: int = 1
+
+    LABEL_COL = 'de_lu_price_hat_rm_seasonal'
