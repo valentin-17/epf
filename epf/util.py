@@ -5,13 +5,12 @@ import re
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import keras_tuner as kt
 from matplotlib import pyplot as plt
 from sktime.transformations.series.impute import Imputer
 from sktime.transformations.series.outlier_detection import HampelFilter
 from statsmodels.tsa.seasonal import MSTL
 
-from epf.config import ModelConfig
+from epf.config import ModelConfig, RAW_DATA_DIR
 
 
 def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: int, impute_method: str = None) -> pd.DataFrame:
@@ -55,24 +54,26 @@ def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: 
     return data
 
 
-def load_and_concat_data(file_paths: list, column_names: list) -> pd.DataFrame:
+def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
     """
     Load and concatenate data from multiple CSV files given by ``file_paths``.
     NaN values are interpolated with ``pandas.DataFrame.interpolate(method='time')``
 
     :param file_paths: List of file paths to the CSV files.
-    :param column_names: List of column names.
+    :param column_name: The column name to use.
 
     :returns: DataFrame for each feature containing raw data from the years 2023 - 2024.
     :rtype: pd.DataFrame
     """
     df = []
+    cols = ['timestamp', column_name]
+
     for file_path in file_paths:
         # Skip extra row for DK and FR prices because there is an extra disclaimer header row
         if re.search(r'fr_prices|dk_._prices', file_path):
-            df.append(pd.read_csv(file_path, skiprows=3, names=column_names))
+            df.append(pd.read_csv(RAW_DATA_DIR / file_path, skiprows=3, names=cols))
         else:
-            df.append(pd.read_csv(file_path, header=1, names=column_names))
+            df.append(pd.read_csv(RAW_DATA_DIR / file_path, header=1, names=cols))
 
     concat_data = pd.concat(df)
     concat_data.reset_index(drop=True, inplace=True)
@@ -142,6 +143,86 @@ def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) 
     validation_split = int(len(data) * validation)
 
     return data[0:train_split], data[train_split:validation_split], data[validation_split:]
+
+
+def builder(hp):
+    """
+    Builds a tunable ``keras.Model``. The specific model that is returned is determined by the ``MODEL_NAME`` parameter
+    in the ``ModelConfig`` class.
+
+    :returns: A compiled tunable ``keras.Sequential`` instance.
+    """
+    mc = ModelConfig()
+    u_min, u_max, u_step = mc.UNIT_MIN_VALUE, mc.UNIT_MAX_VALUE, mc.UNIT_STEP
+    k_min, k_max, k_step = mc.KERNEL_SIZE_MIN_VALUE, mc.KERNEL_SIZE_MAX_VALUE, mc.KERNEL_SIZE_STEP
+    l_rate = mc.LEARNING_RATE
+    dr_min, dr_max, dr_step = mc.DROPOUT_RATE_MIN_VALUE, mc.DROPOUT_RATE_MAX_VALUE, mc.DROPOUT_RATE_STEP
+    d = mc.USE_DROPOUT
+    n_min, n_max, n_step = mc.NUM_LAYERS_MIN, mc.NUM_LAYERS_MAX, mc.NUM_LAYERS_STEP
+
+    lr = hp.Choice(name='learning_rate', values=l_rate)
+    drop = hp.Boolean(name='drop', default=d)
+
+    out_steps = mc.OUT_STEPS
+    model_builder = mc.MODEL_BUILDER
+    num_features = mc.NUM_FEATURES
+
+    model = keras.Sequential()
+
+    # differentiate between the input layers whether to use lstm, gru or conv
+    if model_builder == "LSTM":
+        model.add(keras.layers.LSTM(hp.Int(name='units',
+                                           min_value=u_min,
+                                           max_value=u_max,
+                                           step=u_step), return_sequences=False))
+
+    if model_builder == "GRU":
+        model.add(keras.layers.GRU(hp.Int(name='units',
+                                          min_value=u_min,
+                                          max_value=u_max,
+                                          step=u_step), return_sequences=False))
+
+    if model_builder == "CONV":
+        ks = hp.Int(name='kernel_size', min_value=k_min, max_value=k_max, step=k_step)
+
+        model.add(keras.layers.Lambda(lambda x: x[:, -ks:, :]))
+        model.add(keras.layers.Conv1D(hp.Int(name='units',
+                                             min_value=u_min,
+                                             max_value=u_max,
+                                             step=u_step), activation='relu', kernel_size=ks))
+
+    # after the initial layer, model building is identical
+    if drop:
+        model.add(keras.layers.Dropout(rate=hp.Float(name='dropout',
+                                                     min_value=dr_min,
+                                                     max_value=dr_max,
+                                                     step=dr_step)))
+
+    # add hidden layers and dropout layers if dropout is used
+    for i in range(0, hp.Int('num_layers', min_value=n_min, max_value=n_max, step=n_step)):
+        model.add(keras.layers.Dense(units=hp.Int(name='units_' + str(i),
+                                                  min_value=u_min,
+                                                  max_value=u_max,
+                                                  step=u_step), activation="relu"))
+        if drop:
+            model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
+                                                         min_value=dr_min,
+                                                         max_value=dr_max,
+                                                         step=dr_step)))
+
+    # introduce dense layer with out_steps * num_features to implement single shot forecasting, needs to be reshaped
+    # to [out_steps, num_features] afterward.
+    model.add(keras.layers.Dense(out_steps * num_features,
+                                 kernel_initializer=keras.initializers.zeros()))
+    model.add(keras.layers.Reshape([out_steps, num_features]))
+
+    # compile the model
+    model.compile(loss=keras.losses.MeanSquaredError(),
+                  optimizer=keras.optimizers.Adam(learning_rate=lr),
+                  metrics=[keras.metrics.MeanAbsoluteError()])
+
+    return model
+
 
 # code taken from [3] /references/refs.md
 class WindowGenerator():
@@ -232,7 +313,7 @@ class WindowGenerator():
             self._example = result
         return result
 
-    def plot(self, model=None, plot_col='de_lu_price_hat_rm_seasonal', max_subplots=3):
+    def plot(self, model=None, plot_col='de_prices_hat_rm_seasonal', max_subplots=3):
         inputs, labels = self.example
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
@@ -263,96 +344,3 @@ class WindowGenerator():
                 plt.legend()
 
         plt.xlabel('Time [h]')
-
-class ModelBuilder():
-    """
-    A class used to dynamically build models. The layer type can be set using the ``model`` param
-    """
-
-    def __init__(self, mc: ModelConfig = ModelConfig):
-        """
-        The ModelBuilder constructor.
-
-        :param mc: ModelConfig object. If no ModelConfig is provided, the global ModelConfig will be used.
-        """
-        self.mc = mc
-
-    def build(self, model_builder: str, num_features: int, hp: kt.HyperParameters = kt.HyperParameters) -> keras.Model:
-        """
-        Builds a tunable ``keras.Model``. The specific model that is returned is determined by the ``MODEL_NAME`` parameter
-        in the ``ModelConfig`` class.
-
-        :param model_builder: The model builder to use. Choose between ``LSTM``, ``GRU`` and ``CONV``
-        :param num_features: The number of features expected by the model.
-        :param hp: Keras Hyperparameter object. If no HyperParameters object is provided, the default ``keras.Hyperparameters`` will be used.
-
-        :returns: A compiled tunable ``keras.Model`` instance.
-        """
-        u_min, u_max, u_step = self.mc.UNIT_MIN_VALUE, self.mc.UNIT_MAX_VALUE, self.mc.UNIT_STEP
-        k_min, k_max, k_step = self.mc.KERNEL_SIZE_MIN_VALUE, self.mc.KERNEL_SIZE_MAX_VALUE, self.mc.KERNEL_SIZE_STEP
-        l_rate = self.mc.LEARNING_RATE
-        dr_min, dr_max, dr_step = self.mc.DROPOUT_RATE_MIN_VALUE, self.mc.DROPOUT_RATE_MAX_VALUE, self.mc.DROPOUT_RATE_STEP
-        d = self.mc.USE_DROPOUT
-        n_min, n_max, n_step = self.mc.NUM_LAYERS_MIN, self.mc.NUM_LAYERS_MAX, self.mc.NUM_LAYERS_STEP
-
-        ks = hp.Int('kernel_size', min_value=k_min, max_value=k_max, step=k_step)
-        lr = hp.Choice('learning_rate', values=l_rate)
-        drop = hp.Boolean('dropout', default=d)
-
-        out_steps = self.mc.OUT_STEPS
-        num_features = num_features
-        hp = kt.HyperParameters()
-
-        model = keras.Sequential()
-
-        # differentiate between the input layers whether to use lstm, gru or conv
-        if model_builder == "LSTM":
-            model.add(keras.layers.LSTM(hp.Int(name='units',
-                                               min_value=u_min,
-                                               max_value=u_max,
-                                               step=u_step), return_sequences=False))
-
-        if model_builder == "GRU":
-            model.add(keras.layers.GRU(hp.Int(name='units',
-                                              min_value=u_min,
-                                              max_value=u_max,
-                                              step=u_step), return_sequences=False))
-
-        if model_builder == "CONV":
-            model.add(keras.layers.Lambda(lambda x: x[:, -ks:, :]))
-            model.add(keras.layers.Conv1D(hp.Int(name='units',
-                                                 min_value=u_min,
-                                                 max_value=u_max,
-                                                 step=u_step), activation='relu', kernel_size=ks))
-
-        # after the initial layer, model building is identical
-        if drop:
-            model.add(keras.layers.Dropout(rate=hp.Float(name='dropout',
-                                                         min_value=dr_min,
-                                                         max_value=dr_max,
-                                                         step=dr_step)))
-
-        # add hidden layers and dropout layers if dropout is used
-        for i in range(0, hp.Int('num_layers', min_value=n_min, max_value=n_max, step=n_step)):
-            model.add(keras.layers.Dense(units=hp.Int(name='units_' + str(i),
-                                                      min_value=u_min,
-                                                      max_value=u_max,
-                                                      step=u_step), activation="relu"))
-            if drop:
-                model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
-                                                             min_value=dr_min,
-                                                             max_value=dr_max,
-                                                             step=dr_step)))
-
-        # introduce dense layer with out_steps * num_features to implement single shot forecasting, needs to be reshaped
-        # to [out_steps, num_features] afterward.
-        model.add(keras.layers.Dense(out_steps * num_features,
-                                     kernel_initializer=keras.initializers.zeros()))
-        model.add(keras.layers.Reshape([out_steps, num_features]))
-
-        # compile the model
-        model.compile(loss=keras.losses.MeanSquaredError(),
-                      optimizer=keras.optimizers.Adam(learning_rate=lr),
-                      metrics=[keras.metrics.MeanAbsoluteError()])
-
-        return model

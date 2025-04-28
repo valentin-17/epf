@@ -2,21 +2,47 @@ from pathlib import Path
 
 from loguru import logger
 
+LOG = logger.bind(name="epf")
+
+# Paths
+def create_dir(path: Path, description: str):
+    """Creates a directory if it does not exist and logs its path."""
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"{description} has been created. Path is: {path}")
+    else:
+        logger.info(f"{description} path is: {path}")
+
 # Paths
 PROJ_ROOT: Path = Path(__file__).resolve().parents[1]
 logger.info(f"PROJ_ROOT path is: {PROJ_ROOT}")
 
 DATA_DIR: Path = PROJ_ROOT / "data"
+create_dir(DATA_DIR, "DATA_DIR")
+
 RAW_DATA_DIR: Path = DATA_DIR / "raw"
+create_dir(RAW_DATA_DIR, "RAW_DATA_DIR")
+
 INTERIM_DATA_DIR: Path = DATA_DIR / "interim"
+create_dir(INTERIM_DATA_DIR, "INTERIM_DATA_DIR")
+
 PROCESSED_DATA_DIR: Path = DATA_DIR / "processed"
+create_dir(PROCESSED_DATA_DIR, "PROCESSED_DATA_DIR")
+
+TRAIN_DATA_DIR: Path = PROCESSED_DATA_DIR / "train_data"
+create_dir(TRAIN_DATA_DIR, "TRAIN_DATA_DIR")
 
 MODELS_DIR: Path = PROJ_ROOT / "models"
+create_dir(MODELS_DIR, "MODELS_DIR")
+
 PREDICTIONS_DIR: Path = MODELS_DIR / "predictions"
+create_dir(PREDICTIONS_DIR, "PREDICTIONS_DIR")
 
 REPORTS_DIR: Path = PROJ_ROOT / "reports"
-FIGURES_DIR: Path = REPORTS_DIR / "figures"
+create_dir(REPORTS_DIR, "REPORTS_DIR")
 
+FIGURES_DIR: Path = REPORTS_DIR / "figures"
+create_dir(FIGURES_DIR, "FIGURES_DIR")
 
 class FeatureConfig:
     """
@@ -26,7 +52,7 @@ class FeatureConfig:
     :type INPUT_PATHS: dict[str,list[str]]
 
     :ivar COL_NAMES: List of column names for the features.
-    :type COL_NAMES: list[str]
+    :type COL_NAMES: dict[str,list[str]]
 
     :ivar TO_RESAMPLE: Dict of columns that need to be resampled to hourly frequency.
         Use value field to specify which frequency to use for resampling (e.g. 4 if original frequency is quarter hourly).
@@ -62,23 +88,23 @@ class FeatureConfig:
         'fr_prices': ['fr_prices_2023.csv', 'fr_prices_2024.csv'],
     }
 
-    COL_NAMES = [
-        'de_lu_prices',
-        'de_load',
-        'de_solar_gen',
-        'de_wind_gen_offshore',
-        'de_wind_gen_onshore',
-        'de_gas_gen',
-        'de_lignite_gen',
-        'de_hard_coal_gen',
-        'ch_load',
-        'dk_load',
-        'fr_load',
-        'ch_prices',
-        'dk1_prices',
-        'dk2_prices',
-        'fr_prices'
-    ]
+    COL_NAMES = {
+        'de_lu_prices': ['de_prices_2023', 'de_prices_2024'],
+        'de_load': ['de_load_2023', 'de_load_2024'],
+        'de_solar_gen': ['de_solar_gen_2023', 'de_solar_gen_2024'],
+        'de_wind_gen_offshore': ['de_wind_gen_offshore_2023', 'de_wind_gen_offshore_2024'],
+        'de_wind_gen_onshore': ['de_wind_gen_onshore_2023', 'de_wind_gen_onshore_2024'],
+        'de_gas_gen': ['de_gas_gen_2023', 'de_gas_gen_2024'],
+        'de_lignite_gen': ['de_lignite_gen_2023', 'de_lignite_gen_2024'],
+        'de_hard_coal_gen': ['de_hard_coal_gen_2023', 'de_hard_coal_gen_2024'],
+        'ch_load': ['ch_load_2023', 'ch_load_2024'],
+        'dk_load': ['dk_load_2023', 'dk_load_2024'],
+        'fr_load': ['fr_load_2023', 'fr_load_2024'],
+        'ch_prices': ['ch_prices_2023', 'ch_prices_2024'],
+        'dk1_prices': ['dk1_prices_2023', 'dk1_prices_2024'],
+        'dk2_prices': ['dk2_prices_2023', 'dk2_prices_2024'],
+        'fr_prices': ['fr_prices_2023', 'fr_prices_2024'],
+    }
 
     TO_RESAMPLE = {
         'de_load': 4,
@@ -92,7 +118,7 @@ class FeatureConfig:
 
     FEATURE_DICT = {
         # prices
-        'de_lu_price_hat_rm_seasonal': {
+        'de_prices_hat_rm_seasonal': {
             'select': 1,
             'name': 'DE-LU Prices',
             'is-numerical': True
@@ -235,8 +261,11 @@ class ModelConfig:
     :ivar MAX_EPOCHS: The upper boundary for epochs used during training.
     :type MAX_EPOCHS: int
 
-    :ivar OUT_STEPS: The amount of timesteps to predict.
+    :ivar OUT_STEPS: The amount of timesteps to predict. Default is 24 i.e. 1 day.
     :type OUT_STEPS: int
+
+    :ivar MODEL_BUILDER: The model builder to use. Choose from ``LSTM``, ``GRU`` and ``CONV``
+    :type MODEL_BUILDER: str
 
     :ivar UNIT_MIN_VALUE: The minimum Value for units.
     :type UNIT_MIN_VALUE: int
@@ -293,6 +322,9 @@ class ModelConfig:
     MAX_EPOCHS: int = 20
     OUT_STEPS: int = 24
 
+    MODEL_BUILDER = "LSTM"
+    NUM_FEATURES = sum([1 for feature in FeatureConfig.FEATURE_DICT.values() if feature['select'] == 1])
+
     # hp tuner params
     UNIT_MIN_VALUE: int = 32
     UNIT_MAX_VALUE: int = 512
@@ -306,7 +338,7 @@ class ModelConfig:
     LEARNING_RATE: list[float] = [1e-2, 1e-3, 1e-4]
 
     DROPOUT_RATE_MIN_VALUE: float = 0
-    DROPOUT_RATE_MAX_VALUE: float = 1
+    DROPOUT_RATE_MAX_VALUE: float = 0.99
     DROPOUT_RATE_STEP: float = 0.05
 
     USE_DROPOUT: bool = True
@@ -315,4 +347,4 @@ class ModelConfig:
     NUM_LAYERS_MAX: int = 5
     NUM_LAYERS_STEP: int = 1
 
-    LABEL_COL = 'de_lu_price_hat_rm_seasonal'
+    LABEL_COL = 'de_prices_hat_rm_seasonal'

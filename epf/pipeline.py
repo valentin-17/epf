@@ -1,19 +1,20 @@
 import re
-from os.path import exists
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 
 import keras_tuner as kt
-from loguru import logger
 
 import holidays
 import keras
 import pickle as pkl
 import pandas as pd
+from pandas import DataFrame, Series
+from statsmodels.tools.typing import NDArray
 
-from epf.config import FeatureConfig, ModelConfig, MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR
+from epf.config import FeatureConfig, ModelConfig, MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, \
+    TRAIN_DATA_DIR, LOG
 from epf.util import load_and_concat_data, remove_seasonal_component, detect_and_remove_outliers, split_data, \
-    ModelBuilder, WindowGenerator
+    WindowGenerator, builder
 
 
 class EpfPipeline:
@@ -28,20 +29,18 @@ class EpfPipeline:
         raw_data_dir: Path = RAW_DATA_DIR,
         interim_data_dir: Path = INTERIM_DATA_DIR,
         processed_data_dir: Path = PROCESSED_DATA_DIR,
+        train_data_dir: Path = TRAIN_DATA_DIR,
         default_model_path: Path = MODELS_DIR,
-        model_builder: Optional[ModelBuilder] = ModelBuilder(),
     ):
         """
-        Initialize the pipeline with feature and model configurations.
+        Initialize the pipeline with feature and model configurations. Default values should be sufficient. Change
+        directories, Config classes or ``ModelBuilder`` if desired.
 
         :param feature_config: Feature configuration.
         :type feature_config: FeatureConfig
 
         :param model_config: Model configuration.
         :type model_config: ModelConfig
-
-        :param model_builder: A model builder object.
-        :type model_builder: ModelBuilder
 
         :param raw_data_dir: Raw data directory.
         :type raw_data_dir: Path
@@ -52,17 +51,20 @@ class EpfPipeline:
         :param processed_data_dir: Processed data directory.
         :type processed_data_dir: Path
 
+        :param train_data_dir: Training data directory.
+        :type train_data_dir: Path
+
         :param default_model_path: Default path to save the model.
         :type default_model_path: Path
         """
 
-        self.fc = feature_config
-        self.mc = model_config
-        self.mb = model_builder
-        self.raw_data_dir = raw_data_dir
-        self.interim_data_dir = interim_data_dir
-        self.processed_data_dir = processed_data_dir
-        self.default_model_path = default_model_path
+        self._fc = feature_config
+        self._mc = model_config
+        self._raw_data_dir = raw_data_dir
+        self._interim_data_dir = interim_data_dir
+        self._processed_data_dir = processed_data_dir
+        self._train_data_dir = train_data_dir
+        self._default_model_path = default_model_path
 
         self.model = None
         self.raw_data = None
@@ -71,7 +73,6 @@ class EpfPipeline:
         self.train_df = None
         self.validation_df = None
         self.test_df = None
-        self.num_features = None
         self.best_hps = None
         self.best_model = None
         self.history = None
@@ -79,33 +80,39 @@ class EpfPipeline:
     def _load_data(self):
         """ Loads raw data and saves it to interim directory using the feature configuration.
         """
-        file_paths = self.fc.INPUT_PATHS
-        col_names = self.fc.COL_NAMES
-        to_resample = self.fc.TO_RESAMPLE
-        df = []
+        if self.raw_data is not None:
+            LOG.info("Data already has been loaded. Skipping data loading.")
+            return
+
+        file_paths = self._fc.INPUT_PATHS
+        to_resample = self._fc.TO_RESAMPLE
+        df: list[DataFrame] = []
 
         # read all years for each raw feature and concat them in load_and_concat_data, then append them to the big df
         # each file_path list contains multiple paths to the raw yearly data
         for file_path in file_paths.values():
-            logger.info(f"Loading data from {file_path}")
-            data = load_and_concat_data(file_path, col_names)
+            col_name = [k for k, v in file_paths.items() if v == file_path]
+            # we can assert that the result of the list comprehension for col_name only ever has one value
+            # because the mapping in the config is built that way. Only that way col_name[0] can be used even though
+            # it is not the best code from a style and robustness perspective.
+            data = load_and_concat_data(file_path, col_name[0])
 
             # if the columns frequency is not hourly, resample it to hourly frequency
-            if data.columns in to_resample:
-                resample_freq: int = to_resample.get(data.columns)
+            if data.columns.values[0] in to_resample:
+                resample_freq: int = to_resample.get(data.columns.values[0])
                 data = data[::resample_freq]
 
-            df = df.append(data)
+            df.append(data)
 
-        logger.success(f"Raw data has been successfully loaded.")
+        LOG.success(f"Raw data has been successfully loaded.")
 
-        df = pd.concat(df, axis=1)
-        raw_data_path = self.interim_data_dir / "raw_data"
+        data_out = pd.concat(df, axis=1)
+        raw_data_path = self._interim_data_dir / "raw_data"
 
-        logger.info(f"Saving raw data to {raw_data_path}")
-        df.to_csv(raw_data_path, index=True)
+        LOG.info(f"Saving raw data to {raw_data_path}")
+        data_out.to_csv(raw_data_path, index=True)
 
-        self.raw_data = df
+        self.raw_data = data_out
 
     def _generate_features(self):
         """
@@ -114,35 +121,41 @@ class EpfPipeline:
         Note that the current implementation of ``generate_features`` is slow because the feature engineering pipeline
         is ran for each feature regardless if its used later on during training.
         """
-        feature_dict = self.fc.FEATURE_DICT
-        periods = self.fc.PERIODS
-        window_length = self.fc.WINDOW_LENGTH
-        n_sigma = self.fc.N_SIGMA
-        method = self.fc.METHOD
-        seasonal_path = self.fc.SEASONAL_OUT_PATH / "seasonal_components.pkl"
-        generate_lags = self.fc.GENERATE_LAGS
-        generate_dummies = self.fc.GENERATE_DUMMIES
+        if self.feature_set is not None:
+            LOG.info("Feature Set has already been generated. Skipping feature generation.")
+            return
+
+        feature_dict = self._fc.FEATURE_DICT
+        periods = self._fc.PERIODS
+        window_length = self._fc.WINDOW_LENGTH
+        n_sigma = self._fc.N_SIGMA
+        method = self._fc.METHOD
+        seasonal_path = self._fc.SEASONAL_OUT_PATH / "seasonal_components.pkl"
+        generate_lags = self._fc.GENERATE_LAGS
+        generate_dummies = self._fc.GENERATE_DUMMIES
 
         data = self.raw_data
 
-        logger.info(f"Running feature generation.")
+        LOG.info(f"Running feature generation.")
 
         # detect and remove outliers in all price timeseries
+        LOG.info(f"Removing Outliers. This might take a while...")
         data = detect_and_remove_outliers(data, window_length, n_sigma, method)
-        logger.success(f"Finished outlier removal.")
+        LOG.success(f"Finished outlier removal.")
 
         # remove seasonal component from all timeseries and store seasonal component to later add back to predictions
+        LOG.info(f"Removing seasonal component.")
         data, seasonal = remove_seasonal_component(data, periods)
-        logger.success(f"Finished seasonal decomposition.")
+        LOG.success(f"Finished seasonal decomposition.")
 
         # seasonal components are stored for the time being to access them later when predictions are made.
         with open(seasonal_path, 'wb') as f:
             pkl.dump(seasonal, f, -1)
-        logger.success(f"Successfully saved seasonal components to {seasonal_path}")
+        LOG.success(f"Successfully saved seasonal components to {seasonal_path}")
 
         # create calendar features
         if generate_dummies:
-            logger.info(f"Generating dummies.")
+            LOG.info(f"Generating dummies.")
 
             data['month'] = pd.DatetimeIndex(data.index).month
             # 1 = Monday, 7 = Sunday, add 1 because default is 0 = Monday
@@ -155,7 +168,7 @@ class EpfPipeline:
         # create lagged prices according to fft analysis based off of cleaned price data de_lu_price_hat
         # 7 day, 1 day, 12 hour and 1 hour lags are used
         if generate_lags:
-            logger.info(f"Generating lagged prices.")
+            LOG.info(f"Generating lagged prices.")
 
             data['de_lu_price_7_day_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(7 * 24, fill_value=0)
             data['de_lu_price_1_day_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(24, fill_value=0)
@@ -163,12 +176,12 @@ class EpfPipeline:
             data['de_lu_price_1_hour_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(1, fill_value=0)
 
         # only select the columns that are specified in FEATURE_DICT
-        feature_path = self.processed_data_dir / "features.csv"
+        feature_path = self._processed_data_dir / "features.csv"
         feature_set: pd.DataFrame = data.loc[:, [k for k, v in feature_dict.items() if v['select'] == 1]]
         feature_set.to_csv(feature_path, index=True)
 
-        logger.success(f"Successfully saved generated features to {feature_path}")
-        logger.info(f"Finished generating features.")
+        LOG.success(f"Successfully saved generated features to {feature_path}")
+        LOG.info(f"Finished generating features.")
 
         self.feature_set = feature_set
 
@@ -176,10 +189,14 @@ class EpfPipeline:
         """
         Generates Training, Validation and Test data and saves them to ``processed_data_dir``.
         """
+        if self.train_df is not None:
+            LOG.info("Training data has already been generated. Skipping training data generation.")
+            return
+
         feature_set = self.feature_set
-        train_split = self.mc.TRAIN_SPLIT
-        validation_split = self.mc.VALIDATION_SPLIT
-        data_path = self.processed_data_dir / "train_data"
+        train_split = self._mc.TRAIN_SPLIT
+        validation_split = self._mc.VALIDATION_SPLIT
+        data_path = self._train_data_dir
 
         # generate training splits
         train_df, validation_df, test_df = split_data(feature_set, train_split, validation_split)
@@ -194,7 +211,7 @@ class EpfPipeline:
 
         # save train, val and test sets to csv
         # use the highest protocol available, denoted by -1
-        with open(data_path / "train.pkl", 'wb') as f:
+        with open(data_path / "train_df.pkl", 'wb') as f:
             pkl.dump(train_df, f, -1)
 
         with open(data_path / "validation_df.pkl", 'wb') as f:
@@ -202,8 +219,6 @@ class EpfPipeline:
 
         with open(data_path / "test_df.pkl", 'wb') as f:
             pkl.dump(test_df, f, -1)
-
-        self.num_features = feature_set.shape[1]
 
     def _prep_data(self):
         """ Bundles all data preparation steps together for a single call in ``train``"""
@@ -215,13 +230,17 @@ class EpfPipeline:
         """ Tunes the hyperparameters for the provided model builder. Saves the hyperparameters to disk.
         """
         tuner_dir = MODELS_DIR / "tuner"
+        # failsafe if tuner dir does not exist1
+        if not tuner_dir.exists():
+            tuner_dir.mkdir(parents=True, exist_ok=True)
 
         tuner = (kt.BayesianOptimization
         (
-            self.mb.build,
+            builder,
             objective='mean_absolute_error',
             max_trials=10,
             directory=tuner_dir,
+            overwrite=True,
         ))
 
         stop_early = keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
@@ -236,36 +255,41 @@ class EpfPipeline:
         self.best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
         self.best_model = tuner.get_best_models(num_models=1)[0]
 
-        logger.info(f"""
+        LOG.info(f"""
         The hyperparameter search is complete. The optimal number of units in the first densely-connected
         layer is {self.best_hps.get('units')} and the optimal learning rate for the optimizer
         is {self.best_hps.get('learning_rate')}.
         """)
 
-    def train(self, model_builder: str, model_name: str, overwrite: bool):
+    def train(self, model_name: str, overwrite: bool, prep_data: bool = True):
         """
-        Trains a model on the provided feature set using the model configuration. Saves the trained model to disk.
-
-        :param model_builder: The model builder to use. Choose between ``LSTM``, ``GRU`` and ``CONV``
-        :type model_builder: str
+        Trains a model on the provided feature set using the model configuration. Saves the trained model to ``MODELS_DIR/model_name``.
 
         :param model_name: A name for the model that identifies it when saved.
         :type model_name: str
 
         :param overwrite: Whether to overwrite existing model or not.
         :type overwrite: bool
+
+        :param prep_data: Whether to prepare the data or not. If set to False, preprocessed data is loaded from disk.
+        :type prep_data: bool
         """
-        model_out_path = self.default_model_path / model_name
-        out_steps = self.mc.OUT_STEPS
-        max_epochs = self.mc.MAX_EPOCHS
-        label_col = self.mc.LABEL_COL
+        model_out_path = (self._default_model_path / model_name).with_suffix('.keras')
+        out_steps = self._mc.OUT_STEPS
+        max_epochs = self._mc.MAX_EPOCHS
+        label_col = self._mc.LABEL_COL
 
-        self._prep_data()
-        logger.success(f"Successfully prepared training data for {model_name}")
-
-        # build and compile model from config
-        self.model = self.mb.build(model_builder=model_builder, num_features=self.num_features)
-        logger.success(f"Successfully built {model_name}.")
+        if prep_data:
+            self._prep_data()
+            LOG.success(f"Successfully prepared training data for {model_name}")
+        else:
+            with open(self._train_data_dir / "train_df.pkl", 'rb') as f:
+                self.train_df = pkl.load(f)
+            with open(self._train_data_dir / "validation_df.pkl", 'rb') as f:
+                self.validation_df = pkl.load(f)
+            with open(self._train_data_dir / "test_df.pkl", 'rb') as f:
+                self.test_df = pkl.load(f)
+            LOG.success(f"Successfully loaded training data for {model_name}")
 
         # generate windows
         window = WindowGenerator(train_df=self.train_df,
@@ -278,23 +302,28 @@ class EpfPipeline:
 
         # tune hyperparams
         self._tune_hyperparameters(window=window, max_epochs=max_epochs)
-        logger.success(f"Successfully tuned hyperparameters for {model_name}")
+        LOG.success(f"Successfully tuned hyperparameters for {model_name}")
 
         # run training loop with best model
         early_stopping = keras.callbacks.EarlyStopping(monitor='val_loss',
                                                        patience=2,
                                                        mode='min')
 
+        LOG.info(f"Training {model_name} on the following Features:"
+                 f"{[str(feature['name']) for feature in self._fc.FEATURE_DICT.values() if feature['select'] == 1]}.")
         self.history = self.best_model.fit(window.train, epochs=max_epochs,
                                            validation_data=window.val,
                                            callbacks=[early_stopping])
 
+        LOG.success(f"Successfully trained {model_name}."
+                    "Now saving...")
+
         # save performance to disk
-        if Path.exists(self.processed_data_dir / "val_performance.pkl") and Path.exists(self.processed_data_dir / "performance.pkl"):
-            with open(self.processed_data_dir / "val_performance.pkl", 'rb') as f:
+        if Path.exists(self._processed_data_dir / "val_performance.pkl") and Path.exists(self._processed_data_dir / "performance.pkl"):
+            with open(self._processed_data_dir / "val_performance.pkl", 'rb') as f:
                 val_performance = pkl.load(f)
 
-            with open(self.processed_data_dir / "performance.pkl", 'rb') as f:
+            with open(self._processed_data_dir / "performance.pkl", 'rb') as f:
                 performance = pkl.load(f)
 
         else:
@@ -304,24 +333,26 @@ class EpfPipeline:
         val_performance[model_name] = self.best_model.evaluate(window.val, return_dict=True)
         performance[model_name] =self.best_model.evaluate(window.test, verbose=0, return_dict=True)
 
-        with open(self.processed_data_dir / "val_performance.pkl", 'wb') as f:
+        with open(self._processed_data_dir / "val_performance.pkl", 'wb') as f:
             pkl.dump(val_performance, f, -1)
 
-        with open(self.processed_data_dir / "performance.pkl", 'wb') as f:
+        with open(self._processed_data_dir / "performance.pkl", 'wb') as f:
             pkl.dump(performance, f, -1)
 
         # save trained model to disk
         if not overwrite and model_out_path.exists():
-            FileExistsError(f"{model_out_path} already exists! If you want to overwrite it please use -o.")
+            FileExistsError(f"{model_out_path} already exists! If you want to overwrite it please set overwrite=True.")
         else:
-            self.model.save(model_out_path / ".keras", overwrite=True)
+            self.best_model.save(model_out_path, overwrite=True)
+            LOG.success(f"Successfully saved {model_name} to {model_out_path}")
 
-    def predict(self, data: Path, model_path: Path, predictions_dir: Path):
+
+    def predict(self, data_path: Path, model_path: Path, predictions_dir: Path):
         """
         Make predictions using the trained model.
 
-        :param data: Path to the input data for prediction.
-        :type data: pathlib.Path
+        :param data_path: Path to the input data for prediction.
+        :type data_path: pathlib.Path
 
         :param model_path: Path to the trained model that is used for the prediction.
         :type model_path: pathlib.Path
@@ -331,15 +362,28 @@ class EpfPipeline:
         """
         # model_name extracts the literal name of the model out of the model path
         match = re.search(r'\w+?(?=\.)', str(model_path))
-        model_name = str(match) if match is not None else "default"
+        model_name = match.group(0) if match is not None else "default"
         predictions_path = predictions_dir / f"predictions_from_{model_name}.pkl"
 
         # Load the model
         self.model = keras.saving.load_model(model_path, compile=True)
+
+        with open(data_path, 'rb') as f:
+            data = pkl.load(f)
+
+        # Check if the data is a NDarray otherwise convert to df
+        if not isinstance(data, DataFrame):
+            LOG.warning(f"The input data for {model_name} is of type {type(data)}. Please ensure you provide a DataFrame.")
+            data = pd.DataFrame(data)
+
+        # reshape data to the input shape of the model
+        data = data.values.reshape((1, data.shape[0], data.shape[1]))
+        print(data)
+
         self.predictions = self.model.predict(data)
-        logger.success(f"Successfully predicted features.")
+        LOG.success(f"Successfully predicted features.")
 
         # save predictions to disk
         with open(predictions_path, 'wb') as f:
             pkl.dump(self.predictions, f, -1)
-        logger.success(f"Successfully saved predictions to {predictions_path}")
+        LOG.success(f"Successfully saved predictions to {predictions_path}")
