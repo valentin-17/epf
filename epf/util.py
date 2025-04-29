@@ -1,19 +1,19 @@
-from typing import Optional
-
 import keras
 import re
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import pickle as pkl
 from matplotlib import pyplot as plt
 from sktime.transformations.series.impute import Imputer
 from sktime.transformations.series.outlier_detection import HampelFilter
 from statsmodels.tsa.seasonal import MSTL
 
-from epf.config import ModelConfig, RAW_DATA_DIR
+from epf.config import ModelConfig, RAW_DATA_DIR, PROCESSED_DATA_DIR
 
 
-def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: int, impute_method: str = None) -> pd.DataFrame:
+def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: int,
+                               impute_method: str = None) -> pd.DataFrame:
     """
     Detect and remove outliers from features using Hampel Filter. Only imputes data where outliers are present.
 
@@ -87,7 +87,8 @@ def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
     return concat_data
 
 
-def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)) -> tuple[pd.DataFrame, dict[str, MSTL]]:
+def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)) -> tuple[
+    pd.DataFrame, dict[str, MSTL]]:
     """
     Removes the seasonal component from each feature by multiple STL decomposition. Seasonal decomposition is done for
     each period provided with param ``periods``.
@@ -119,7 +120,8 @@ def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)
     return data, seasonal_component
 
 
-def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) -> tuple[
+    pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Splits data into train, validation and test sets.
     Train and Validation params are the upper boundary for their respective splits. Lower boundaries are calculated.

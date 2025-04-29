@@ -344,7 +344,7 @@ class ModelConfig:
     USE_DROPOUT: bool = True
 
     NUM_LAYERS_MIN: int = 0
-    NUM_LAYERS_MAX: int = 5
+    NUM_LAYERS_MAX: int = 0
     NUM_LAYERS_STEP: int = 1
 
     LABEL_COL = 'de_prices_hat_rm_seasonal'

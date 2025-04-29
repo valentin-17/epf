@@ -8,8 +8,8 @@ import holidays
 import keras
 import pickle as pkl
 import pandas as pd
-from pandas import DataFrame, Series
-from statsmodels.tools.typing import NDArray
+from pandas import DataFrame
+from numpy import ndarray
 
 from epf.config import FeatureConfig, ModelConfig, MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, \
     TRAIN_DATA_DIR, LOG
@@ -17,7 +17,7 @@ from epf.util import load_and_concat_data, remove_seasonal_component, detect_and
     WindowGenerator, builder
 
 
-class EpfPipeline:
+class EpfPipeline(object):
     """
     A class to load and process raw data, build, tune and train the model and predict from new inputs.
     Configurable via ``FeatureConfig`` and ``ModelConfig``.
@@ -57,7 +57,6 @@ class EpfPipeline:
         :param default_model_path: Default path to save the model.
         :type default_model_path: Path
         """
-
         self._fc = feature_config
         self._mc = model_config
         self._raw_data_dir = raw_data_dir
@@ -66,22 +65,23 @@ class EpfPipeline:
         self._train_data_dir = train_data_dir
         self._default_model_path = default_model_path
 
-        self.model = None
-        self.raw_data = None
-        self.feature_set = None
-        self.predictions = None
-        self.train_df = None
-        self.validation_df = None
-        self.test_df = None
         self.best_hps = None
         self.best_model = None
+        self.feature_set = None
         self.history = None
+        self.predictions = None
+        self.raw_data = None
+        self.test_df = None
+        self.train_df = None
+        self.validation_df = None
+        self.window = None
+
 
     def _load_data(self):
         """ Loads raw data and saves it to interim directory using the feature configuration.
         """
         if self.raw_data is not None:
-            LOG.info("Data already has been loaded. Skipping data loading.")
+            LOG.info("Raw data has already been loaded. Skipping loading.")
             return
 
         file_paths = self._fc.INPUT_PATHS
@@ -226,14 +226,35 @@ class EpfPipeline:
         self._generate_features()
         self._generate_training_data()
 
-    def _tune_hyperparameters(self, window: WindowGenerator, max_epochs: int):
-        """ Tunes the hyperparameters for the provided model builder. Saves the hyperparameters to disk.
+    def _tune_hyperparameters(self,
+                              window: WindowGenerator,
+                              max_epochs: int,
+                              model_name: str,
+                              tuner_dir: Path,
+                              tuned_model_path: Path,
+                              tuned_hyperparams_path: Path,):
         """
-        tuner_dir = MODELS_DIR / "tuner"
-        # failsafe if tuner dir does not exist1
-        if not tuner_dir.exists():
-            tuner_dir.mkdir(parents=True, exist_ok=True)
+        Tunes the hyperparameters for the provided model builder. Saves the best hyperparameters and the best model to disk.
+        Also saves both properties to the class instance for streamlined use in training.
 
+        :param window: WindowGenerator object containing the training, validation and test data.
+        :type window: WindowGenerator
+
+        :param max_epochs: Maximum number of epochs for training.
+        :type max_epochs: int
+
+        :param model_name: Name of the model to be tuned.
+        :type model_name: str
+
+        :param tuner_dir: Directory to save the tuned hyperparameters.
+        :type tuner_dir: Path
+
+        :param tuned_model_path: Path to save the tuned model.
+        :type tuned_model_path: Path
+
+        :param tuned_hyperparams_path: Path to save the tuned hyperparameters.
+        :type tuned_hyperparams_path: Path
+        """
         tuner = (kt.BayesianOptimization
         (
             builder,
@@ -241,6 +262,7 @@ class EpfPipeline:
             max_trials=10,
             directory=tuner_dir,
             overwrite=True,
+            project_name=model_name,
         ))
 
         stop_early = keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
@@ -255,13 +277,20 @@ class EpfPipeline:
         self.best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
         self.best_model = tuner.get_best_models(num_models=1)[0]
 
+        with open(tuned_model_path, 'wb') as f:
+            pkl.dump(self.best_model, f)
+
+        with open(tuned_hyperparams_path, 'wb') as f:
+            pkl.dump(self.best_hps, f)
+
         LOG.info(f"""
         The hyperparameter search is complete. The optimal number of units in the first densely-connected
         layer is {self.best_hps.get('units')} and the optimal learning rate for the optimizer
         is {self.best_hps.get('learning_rate')}.
         """)
 
-    def train(self, model_name: str, overwrite: bool, prep_data: bool = True):
+
+    def train(self, model_name: str, overwrite: bool, prep_data: bool = True, use_tuned_hyperparams: bool = False):
         """
         Trains a model on the provided feature set using the model configuration. Saves the trained model to ``MODELS_DIR/model_name``.
 
@@ -272,22 +301,51 @@ class EpfPipeline:
         :type overwrite: bool
 
         :param prep_data: Whether to prepare the data or not. If set to False, preprocessed data is loaded from disk.
+            If set to True already existing Data is overwritten.
         :type prep_data: bool
+
+        :param use_tuned_hyperparams: Whether to use already tuned hyperparameters from disk or tune them again for this training loop.
+        :type use_tuned_hyperparams: bool
         """
+        tuner_dir = MODELS_DIR / "tuner"
+        # failsafe if tuner dir does not exist1
+        if not tuner_dir.exists():
+            tuner_dir.mkdir(parents=True, exist_ok=True)
+
         model_out_path = (self._default_model_path / model_name).with_suffix('.keras')
+        tuned_model_path = (tuner_dir / model_name).with_suffix('.pkl')
+        tuned_hyperparams_path = (tuner_dir / f"{model_name}_hyperparameters").with_suffix('.pkl')
         out_steps = self._mc.OUT_STEPS
         max_epochs = self._mc.MAX_EPOCHS
         label_col = self._mc.LABEL_COL
 
-        if prep_data:
+        train_path = (self._train_data_dir / "train_df").with_suffix('.pkl')
+        validation_path = (self._train_data_dir / "validation_df").with_suffix('.pkl')
+        test_path = (self._train_data_dir / "test_df").with_suffix('.pkl')
+
+        LOG.info(f"Data paths for training loop successfully initialized.\n"
+                 f"Model output: {model_out_path.as_posix()}.\n"
+                 f"Tuned model path: {tuned_model_path.as_posix()}.\n"
+                 f"Tuned Hyperparameters path: {tuned_hyperparams_path.as_posix()}.\n"
+                 f"Train_df path: {train_path.as_posix()}.\n"
+                 f"Validation_df path: {validation_path.as_posix()}.\n"
+                 f"Test_df path: {test_path.as_posix()}.\n")
+
+        # check if training data is already prepared, or if paths are valid, if any path doesnt exist the program falls
+        # back to preparing the data. Otherwise, data from disk is loaded
+        if prep_data or not(train_path.exists() or validation_path.exists() or test_path.exists()):
+            if not(train_path.exists() or validation_path.exists() or test_path.exists()):
+                LOG.warning("Training data not found. Preparing training data from scratch.")
             self._prep_data()
             LOG.success(f"Successfully prepared training data for {model_name}")
-        else:
-            with open(self._train_data_dir / "train_df.pkl", 'rb') as f:
+
+        elif not prep_data and (train_path.exists() and validation_path.exists() and test_path.exists()):
+            LOG.info("Now loading training data from disk.")
+            with open(train_path, 'rb') as f:
                 self.train_df = pkl.load(f)
-            with open(self._train_data_dir / "validation_df.pkl", 'rb') as f:
+            with open(validation_path, 'rb') as f:
                 self.validation_df = pkl.load(f)
-            with open(self._train_data_dir / "test_df.pkl", 'rb') as f:
+            with open(test_path, 'rb') as f:
                 self.test_df = pkl.load(f)
             LOG.success(f"Successfully loaded training data for {model_name}")
 
@@ -300,9 +358,31 @@ class EpfPipeline:
                                  shift=out_steps,
                                  label_columns=[label_col], )
 
-        # tune hyperparams
-        self._tune_hyperparameters(window=window, max_epochs=max_epochs)
-        LOG.success(f"Successfully tuned hyperparameters for {model_name}")
+        self.window = window
+
+        # tune hyperparams, skip hyperparameter tuning if use_tuned_hyperparams is set to True
+        if use_tuned_hyperparams and (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
+            LOG.info(f"Skipping hyperparameter tuning and loading tuned hyperparameters for {model_name} "
+                     f"from {tuned_hyperparams_path.as_posix()}.")
+            with open(tuned_model_path, 'rb') as f:
+                self.best_model = pkl.load(f)
+            with open(tuned_hyperparams_path, 'rb') as f:
+                self.best_hps = pkl.load(f)
+        elif (not use_tuned_hyperparams) or (use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists())):
+            if not (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
+                LOG.warning("No tuned hyperparameters and model found at paths "
+                            f"{tuned_model_path.as_posix()} and {tuned_hyperparams_path.as_posix()} for {model_name}. "
+                            "Defaulting to fresh Hyperparameter tuning.")
+            LOG.info(f"Now tuning hyperparameters for {model_name}. This might take a while...")
+            # note that tune_hyperparameters automatically sets the properties best_model and best_hps to be used
+            # further down the line
+            self._tune_hyperparameters(window=window,
+                                       max_epochs=max_epochs,
+                                       model_name=model_name,
+                                       tuner_dir=tuner_dir,
+                                       tuned_model_path=tuned_model_path,
+                                       tuned_hyperparams_path=tuned_hyperparams_path)
+            LOG.success(f"Successfully tuned hyperparameters for {model_name}")
 
         # run training loop with best model
         early_stopping = keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -341,18 +421,18 @@ class EpfPipeline:
 
         # save trained model to disk
         if not overwrite and model_out_path.exists():
-            FileExistsError(f"{model_out_path} already exists! If you want to overwrite it please set overwrite=True.")
+            FileExistsError(f"{model_out_path.as_posix()} already exists! If you want to overwrite it please set overwrite=True.")
         else:
             self.best_model.save(model_out_path, overwrite=True)
-            LOG.success(f"Successfully saved {model_name} to {model_out_path}")
+            LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
 
 
-    def predict(self, data_path: Path, model_path: Path, predictions_dir: Path):
+    def predict(self, data: WindowGenerator, model_path: Path, predictions_dir: Path):
         """
         Make predictions using the trained model.
 
-        :param data_path: Path to the input data for prediction.
-        :type data_path: pathlib.Path
+        :param data: Test dataset provided by ``WindowGenerator`` class.
+        :type data: WindowGenerator
 
         :param model_path: Path to the trained model that is used for the prediction.
         :type model_path: pathlib.Path
@@ -366,21 +446,11 @@ class EpfPipeline:
         predictions_path = predictions_dir / f"predictions_from_{model_name}.pkl"
 
         # Load the model
-        self.model = keras.saving.load_model(model_path, compile=True)
+        LOG.info(f"Loading model from {model_path}.")
+        model = keras.saving.load_model(model_path, compile=True)
+        LOG.success(f"Successfully loaded model from {model_path}.")
 
-        with open(data_path, 'rb') as f:
-            data = pkl.load(f)
-
-        # Check if the data is a NDarray otherwise convert to df
-        if not isinstance(data, DataFrame):
-            LOG.warning(f"The input data for {model_name} is of type {type(data)}. Please ensure you provide a DataFrame.")
-            data = pd.DataFrame(data)
-
-        # reshape data to the input shape of the model
-        data = data.values.reshape((1, data.shape[0], data.shape[1]))
-        print(data)
-
-        self.predictions = self.model.predict(data)
+        self.predictions = model.predict(data)
         LOG.success(f"Successfully predicted features.")
 
         # save predictions to disk
