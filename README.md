@@ -1,7 +1,7 @@
 
 # Electricity Price Forecasting on the German day-ahead market
 
-This repository contains the code for my bachelors thesis "Forecasting electricity prices in the German day-ahead market with machine learning algorithms". The project-structure largely follows the how-to from cookiecutter data science [[1]](./references/refs.md). For a clean interaction with the tool, a cli app has been integrated using Typer [[8]](./references/refs.md). The code and idea for the cli app are strongly inspired by [[5]](./references/refs.md) and [[6]](./references/refs.md).
+This repository contains the code for my bachelors thesis "Forecasting electricity prices in the German day-ahead market with machine learning algorithms". The project-structure largely follows the how-to from cookiecutter data science [[1]](./references/refs.md).
 
 ---
 
@@ -62,7 +62,7 @@ Outlier filtering is done using a hampel filter [[3]](./references/refs.md) with
 and a threshold of 3 standard deviations.
 Note that we cant use log transformation since there could be zero and negative values for which the log is not defined.
 All timeseries are also deseasonalized using stl decomposition as RNNs perform weaker when trying to learn seasonal
-patterns [[7]](./references/refs.md).
+patterns [[5]](./references/refs.md).
 After normalization the resulting distributions of the features are shown in the following plot:
 
 ![Feature Distributions](./reports/figures/normalized_data_distribution.png)

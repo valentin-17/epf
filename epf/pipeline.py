@@ -1,6 +1,5 @@
 import re
 from pathlib import Path
-from typing import Optional
 
 import keras_tuner as kt
 
@@ -9,7 +8,6 @@ import keras
 import pickle as pkl
 import pandas as pd
 from pandas import DataFrame
-from numpy import ndarray
 
 from epf.config import FeatureConfig, ModelConfig, MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, \
     TRAIN_DATA_DIR, LOG
