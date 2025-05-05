@@ -80,7 +80,7 @@ def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
     concat_data.set_index('timestamp', inplace=True)
 
     # if na values are present interpolate them based on the timestamp
-    if concat_data.isna().sum().sum() > 0:
+    if concat_data.isna().sum() > 0:
         concat_data.interpolate(method='time', inplace=True)
 
     return concat_data
