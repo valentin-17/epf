@@ -11,10 +11,12 @@ from statsmodels.tsa.seasonal import MSTL
 from epf.config import ModelConfig, RAW_DATA_DIR, PROCESSED_DATA_DIR
 
 
-def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: int,
-                               impute_method: str = None) -> pd.DataFrame:
+def detect_and_remove_outliers(data: pd.DataFrame, window_length: int,
+                               n_sigma: int, impute_method: str = None
+                               ) -> pd.DataFrame:
     """
-    Detect and remove outliers from features using Hampel Filter. Only imputes data where outliers are present.
+    Detect and remove outliers from features using Hampel Filter.
+    Only imputes data where outliers are present.
 
     Hampel filter implementation from ``sktime.transformations.series.outlier_detection``.
     See `Hampel Filter documentation <https://www.sktime.net/en/latest/api_reference/auto_generated/sktime.transformations.series.outlier_detection.HampelFilter.html>`_ for more information.
@@ -37,7 +39,8 @@ def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: 
     hampel = HampelFilter(window_length=window_length, n_sigma=n_sigma)
 
     # use the default imputer if no impute method is specified
-    imputer = Imputer(method=impute_method) if impute_method is not None else Imputer()
+    imputer = Imputer(method=impute_method) if impute_method is not None \
+        else Imputer()
 
     for col in data.columns:
         if 'price' in col:
@@ -54,7 +57,8 @@ def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: 
 
 
 def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
-    """Load and concatenate data from multiple CSV files given by ``file_paths``. NaN values are interpolated with ``pandas.DataFrame.interpolate(method='time')``
+    """Load and concatenate data from multiple CSV files given by ``file_paths``.
+    NaN values are interpolated with ``pandas.DataFrame.interpolate(method='time')``
 
     :param file_paths: List of file paths to the CSV files.
     :param column_name: The column name to use.
@@ -78,14 +82,15 @@ def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
     concat_data.set_index('timestamp', inplace=True)
 
     # if na values are present interpolate them based on the timestamp
-    if concat_data.isna().sum() > 0:
+    if concat_data.isna().sum().sum() > 0:
         concat_data.interpolate(method='time', inplace=True)
 
     return concat_data
 
 
-def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)) -> tuple[
-    pd.DataFrame, dict[str, MSTL]]:
+def remove_seasonal_component(data: pd.DataFrame,
+                              periods: list[int] = (24, 168)
+                              ) -> tuple[pd.DataFrame, dict[str, MSTL]]:
     """Removes the seasonal component from each feature by multiple STL decomposition. Seasonal decomposition is done for each period provided with param ``periods``.
 
     MSTL implementation from ``statsmodels.tsa.seasonal``.
@@ -106,8 +111,10 @@ def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)
 
     for col in data.columns:
         mstl = MSTL(data[col], periods=periods).fit()
-        # remove seasonal component from timeseries by adding all seasonal components and then subtracting from original timeseries
-        data[col + '_rm_seasonal'] = data[col] - sum(mstl.seasonal[f'seasonal_{p}'] for p in periods)
+        # remove seasonal component from timeseries by adding
+        # all seasonal components and then subtracting from original timeseries
+        data[col + '_rm_seasonal'] \
+            = (data[col] - sum(mstl.seasonal[f'seasonal_{p}'] for p in periods))
         seasonal_component.update({col + '_rm_seasonal': mstl})
         # drop touched cols
         data.drop(columns=[col], inplace=True)
