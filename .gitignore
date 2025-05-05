@@ -1,5 +1,7 @@
 # Data
-/data/
+/data/external/
+/data/processed/
+/data/interim/
 
 # logs and misc
 /models/tuner/
