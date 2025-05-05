@@ -54,9 +54,7 @@ def detect_and_remove_outliers(data: pd.DataFrame, window_length: int, n_sigma: 
 
 
 def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
-    """
-    Load and concatenate data from multiple CSV files given by ``file_paths``.
-    NaN values are interpolated with ``pandas.DataFrame.interpolate(method='time')``
+    """Load and concatenate data from multiple CSV files given by ``file_paths``. NaN values are interpolated with ``pandas.DataFrame.interpolate(method='time')``
 
     :param file_paths: List of file paths to the CSV files.
     :param column_name: The column name to use.
@@ -88,9 +86,7 @@ def load_and_concat_data(file_paths: list, column_name: str) -> pd.DataFrame:
 
 def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)) -> tuple[
     pd.DataFrame, dict[str, MSTL]]:
-    """
-    Removes the seasonal component from each feature by multiple STL decomposition. Seasonal decomposition is done for
-    each period provided with param ``periods``.
+    """Removes the seasonal component from each feature by multiple STL decomposition. Seasonal decomposition is done for each period provided with param ``periods``.
 
     MSTL implementation from ``statsmodels.tsa.seasonal``.
     See `MSTL documentation <https://www.statsmodels.org/dev/generated/statsmodels.tsa.seasonal.MSTL.html>`_ for more information.
@@ -121,9 +117,7 @@ def remove_seasonal_component(data: pd.DataFrame, periods: list[int] = (24, 168)
 
 def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) -> tuple[
     pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """
-    Splits data into train, validation and test sets.
-    Train and Validation params are the upper boundary for their respective splits. Lower boundaries are calculated.
+    """Splits data into train, validation and test sets. Train and Validation params are the upper boundary for their respective splits. Lower boundaries are calculated.
 
     :param data: DataFrame to be split.
     :type data: pd.DataFrame
@@ -147,9 +141,7 @@ def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) 
 
 
 def builder(hp):
-    """
-    Builds a tunable ``keras.Model``. The specific model that is returned is determined by the ``MODEL_NAME`` parameter
-    in the ``ModelConfig`` class.
+    """Builds a tunable ``keras.Model``. The specific model that is returned is determined by the ``MODEL_NAME`` parameter in the ``ModelConfig`` class.
 
     :returns: A compiled tunable ``keras.Sequential`` instance.
     """
