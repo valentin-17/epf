@@ -168,10 +168,10 @@ class EpfPipeline(object):
         if generate_lags:
             LOG.info(f"Generating lagged prices.")
 
-            data['de_lu_price_7_day_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(7 * 24, fill_value=0)
-            data['de_lu_price_1_day_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(24, fill_value=0)
-            data['de_lu_price_12_hour_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(12, fill_value=0)
-            data['de_lu_price_1_hour_lag'] = data['de_lu_price_hat_rm_seasonal'].shift(1, fill_value=0)
+            data['de_lu_price_7_day_lag'] = data['de_prices_hat_rm_seasonal'].shift(168, fill_value=0)
+            data['de_lu_price_1_day_lag'] = data['de_prices_hat_rm_seasonal'].shift(24, fill_value=0)
+            data['de_lu_price_12_hour_lag'] = data['de_prices_hat_rm_seasonal'].shift(12, fill_value=0)
+            data['de_lu_price_1_hour_lag'] = data['de_prices_hat_rm_seasonal'].shift(1, fill_value=0)
 
         # only select the columns that are specified in FEATURE_DICT
         feature_path = self._processed_data_dir / "features.csv"
@@ -257,7 +257,7 @@ class EpfPipeline(object):
         (
             builder,
             objective='mean_absolute_error',
-            max_trials=10,
+            max_trials=50,
             directory=tuner_dir,
             overwrite=True,
             project_name=model_name,

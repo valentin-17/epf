@@ -124,43 +124,44 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'CH Prices',
             'is-numerical': True
         },
         'dk1_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK1 Prices',
             'is-numerical': True
         },
         'dk2_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK2 Prices',
             'is-numerical': True
         },
         'fr_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'FR Prices',
             'is-numerical': True
         },
         # price lags
+        # only set lags to select = 1 if generate_lags is set to True, otherwise produces error
         'de_lu_price_7_day_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 7-Day Lag',
             'is-numerical': True
         },
         'de_lu_price_1_day_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 24-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_12_hour_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 12-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_1_hour_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 1-Hour Lag',
             'is-numerical': True
         },
@@ -181,17 +182,17 @@ class FeatureConfig:
             'is-numerical': True
         },
         'de_gas_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Gas Generation',
             'is-numerical': True
         },
         'de_lignite_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Lignite Generation',
             'is-numerical': True
         },
         'de_hard_coal_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Hard Coal Generation',
             'is-numerical': True
         },
@@ -202,17 +203,17 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_load_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'CH Load',
             'is-numerical': True
         },
         'dk_load_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK Load',
             'is-numerical': True
         },
         'fr_load_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'FR Load',
             'is-numerical': True
         },
@@ -244,7 +245,7 @@ class FeatureConfig:
     PERIODS: list[int] = [24, 7 * 24]
 
     # feature engineering
-    GENERATE_LAGS: bool = False
+    GENERATE_LAGS: bool = True
     GENERATE_DUMMIES: bool = True
 
 
@@ -344,7 +345,7 @@ class ModelConfig:
     USE_DROPOUT: bool = True
 
     NUM_LAYERS_MIN: int = 0
-    NUM_LAYERS_MAX: int = 0
+    NUM_LAYERS_MAX: int = 5
     NUM_LAYERS_STEP: int = 1
 
     LABEL_COL = 'de_prices_hat_rm_seasonal'
