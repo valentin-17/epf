@@ -402,8 +402,27 @@ class EpfPipeline(object):
         LOG.success(f"Successfully trained {model_name}."
                     "Now saving...")
 
+        # save trained model to disk
+        if not overwrite and model_out_path.exists():
+            FileExistsError(f"{model_out_path.as_posix()} already exists! If you want to overwrite it please set overwrite=True.")
+        else:
+            self.best_model.save(model_out_path, overwrite=True)
+            LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
+
+
+    def eval(self, model_name: str, window: WindowGenerator):
+        """
+        Evaluates the model on the test set and returns the performance metrics.
+
+        :param model_name: Name of the model to be evaluated.
+        :type model_name: str
+
+        :param window: WindowGenerator object containing the training, validation and test data.
+        :type window: WindowGenerator
+        """
         # save performance to disk
-        if Path.exists(self._processed_data_dir / "val_performance.pkl") and Path.exists(self._processed_data_dir / "performance.pkl"):
+        if (Path.exists(self._processed_data_dir / "val_performance.pkl") and
+                Path.exists(self._processed_data_dir / "performance.pkl")):
             with open(self._processed_data_dir / "val_performance.pkl", 'rb') as f:
                 val_performance = pkl.load(f)
 
@@ -414,21 +433,25 @@ class EpfPipeline(object):
             val_performance = {}
             performance = {}
 
+        # before we evaluate we need to denormalize and deseasonalize the data
+        # first denormalize
+
+
+        # secondly deseasonalize with stored seasonal components
+        seasonal_path = self._fc.SEASONAL_OUT_PATH / "seasonal_components.pkl"
+        with open(seasonal_path, 'rb') as f:
+            seasonal_components = pkl.load(f)
+
+
+
         val_performance[model_name] = self.best_model.evaluate(window.val, return_dict=True)
-        performance[model_name] =self.best_model.evaluate(window.test, verbose=0, return_dict=True)
+        performance[model_name] = self.best_model.evaluate(window.test, verbose=0, return_dict=True)
 
         with open(self._processed_data_dir / "val_performance.pkl", 'wb') as f:
             pkl.dump(val_performance, f, -1)
 
         with open(self._processed_data_dir / "performance.pkl", 'wb') as f:
             pkl.dump(performance, f, -1)
-
-        # save trained model to disk
-        if not overwrite and model_out_path.exists():
-            FileExistsError(f"{model_out_path.as_posix()} already exists! If you want to overwrite it please set overwrite=True.")
-        else:
-            self.best_model.save(model_out_path, overwrite=True)
-            LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
 
 
     def predict(self, data: WindowGenerator, model_path: Path, predictions_dir: Path):
