@@ -218,6 +218,12 @@ class EpfPipeline(object):
         with open(data_path / "test_df.pkl", 'wb') as f:
             pkl.dump(test_df, f, -1)
 
+        LOG.success(f"Successfully saved training data to "
+                    f"{str(data_path).join('train_df.pkl')}, "
+                    f"{str(data_path).join('validation_df.pkl')} and "
+                    f"{str(data_path).join('test_df.pkl')} ")
+        LOG.info(f"Finished generating training data.")
+
     def _prep_data(self):
         """ Bundles all data preparation steps together for a single call in ``train``"""
         self._load_data()
