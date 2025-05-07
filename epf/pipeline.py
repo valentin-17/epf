@@ -210,17 +210,17 @@ class EpfPipeline(object):
         # save train, val and test sets to csv
         # use the highest protocol available, denoted by -1
         with open(data_path / "train_df.pkl", 'wb') as f:
-            pkl.dump(train_df, f, -1)
+            pkl.dump(self.train_df, f, -1)
 
         with open(data_path / "validation_df.pkl", 'wb') as f:
-            pkl.dump(validation_df, f, -1)
+            pkl.dump(self.validation_df, f, -1)
 
         with open(data_path / "test_df.pkl", 'wb') as f:
-            pkl.dump(test_df, f, -1)
+            pkl.dump(self.test_df, f, -1)
 
-        LOG.success(f"Successfully saved training data to "
-                    f"{str(data_path).join('train_df.pkl')}, "
-                    f"{str(data_path).join('validation_df.pkl')} and "
+        LOG.success(f"Successfully saved data splits to \n"
+                    f"{str(data_path).join('train_df.pkl')}, \n"
+                    f"{str(data_path).join('validation_df.pkl')} and \n"
                     f"{str(data_path).join('test_df.pkl')} ")
         LOG.info(f"Finished generating training data.")
 
