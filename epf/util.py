@@ -2,6 +2,7 @@ import keras
 import re
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import tensorflow as tf
 from matplotlib import pyplot as plt
 from sktime.transformations.series.impute import Imputer
@@ -315,14 +316,19 @@ class WindowGenerator():
 
     def plot(self, model=None, plot_col='de_prices_hat_rm_seasonal', max_subplots=3):
         inputs, labels = self.example
+
+        sns.set_style("ticks")
+
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
         max_n = min(max_subplots, len(inputs))
+        pc = plot_col.replace('_hat_rm_seasonal', '').replace('_', ' ').capitalize()
+
         for n in range(max_n):
             plt.subplot(max_n, 1, n + 1)
-            plt.ylabel(f'{plot_col} [normed]')
             plt.plot(self.input_indices, inputs[n, :, plot_col_index],
-                     label='Inputs', marker='.', zorder=-10)
+                     label='Inputs', c='#840853')
+            plt.ylabel(f'{pc} deseasonalized and normalized')
 
             if self.label_columns:
                 label_col_index = self.label_columns_indices.get(plot_col, None)
@@ -333,12 +339,14 @@ class WindowGenerator():
                 continue
 
             plt.scatter(self.label_indices, labels[n, :, label_col_index],
-                        edgecolors='k', label='Labels', c='#2ca02c', s=64)
+                        marker='.', label='Labels', c='#840853', s=10)
             if model is not None:
                 predictions = model(inputs)
                 plt.scatter(self.label_indices, predictions[n, :, label_col_index],
-                            marker='X', edgecolors='k', label='Predictions',
-                            c='#ff7f0e', s=64)
+                            marker='x', label='Predictions',
+                            c='#3a609c', s=10)
+
+            plt.xticks([0, 12, 24, 36, 48])
 
             if n == 0:
                 plt.legend()

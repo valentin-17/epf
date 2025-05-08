@@ -313,6 +313,9 @@ class ModelConfig:
     :ivar NUM_LAYERS_STEP: The amount to increment number of hidden layers during hyperparameter search.
     :type NUM_LAYERS_STEP: int
 
+    :ivar MAX_TRIALS: The maximum number of trials for hyperparameter tuning.
+    :type MAX_TRIALS: int
+
     :ivar LABEL_COL: Column name to use as label.
     :type LABEL_COL: str
     """
@@ -347,5 +350,7 @@ class ModelConfig:
     NUM_LAYERS_MIN: int = 0
     NUM_LAYERS_MAX: int = 5
     NUM_LAYERS_STEP: int = 1
+
+    MAX_TRIALS: int = 10
 
     LABEL_COL = 'de_prices_hat_rm_seasonal'

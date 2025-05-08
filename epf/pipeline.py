@@ -131,7 +131,6 @@ class EpfPipeline(object):
         window_length = self._fc.WINDOW_LENGTH
         n_sigma = self._fc.N_SIGMA
         method = self._fc.METHOD
-        seasonal_path = self._fc.SEASONAL_OUT_PATH / "seasonal_components.pkl"
         generate_lags = self._fc.GENERATE_LAGS
         generate_dummies = self._fc.GENERATE_DUMMIES
 
@@ -265,11 +264,13 @@ class EpfPipeline(object):
         :param tuned_hyperparams_path: Path to save the tuned hyperparameters.
         :type tuned_hyperparams_path: Path
         """
+        max_trails = self._mc.MAX_TRIALS
+
         tuner = (kt.BayesianOptimization
             (
             builder,
             objective='mean_absolute_error',
-            max_trials=50,
+            max_trials=max_trails,
             directory=tuner_dir,
             overwrite=True,
             project_name=model_name,
@@ -323,41 +324,53 @@ class EpfPipeline(object):
         if not tuner_dir.exists():
             tuner_dir.mkdir(parents=True, exist_ok=True)
 
-        model_out_path = (self._default_model_path / model_name).with_suffix('.keras')
+        model_out_path = (self._default_model_path / model_name).with_suffix('.pkl')
         tuned_model_path = (tuner_dir / model_name).with_suffix('.pkl')
         tuned_hyperparams_path = (tuner_dir / f"{model_name}_hyperparameters").with_suffix('.pkl')
         out_steps = self._mc.OUT_STEPS
         max_epochs = self._mc.MAX_EPOCHS
         label_col = self._mc.LABEL_COL
 
-        train_path = (self._train_data_dir / "train_df").with_suffix('.pkl')
-        validation_path = (self._train_data_dir / "validation_df").with_suffix('.pkl')
-        test_path = (self._train_data_dir / "test_df").with_suffix('.pkl')
-
         LOG.info(f"Data paths for training loop successfully initialized.\n"
                  f"Model output: {model_out_path.as_posix()}.\n"
                  f"Tuned model path: {tuned_model_path.as_posix()}.\n"
-                 f"Tuned Hyperparameters path: {tuned_hyperparams_path.as_posix()}.\n"
-                 f"Train_df path: {train_path.as_posix()}.\n"
-                 f"Validation_df path: {validation_path.as_posix()}.\n"
-                 f"Test_df path: {test_path.as_posix()}.\n")
+                 f"Tuned Hyperparameters path: {tuned_hyperparams_path.as_posix()}.\n")
 
-        # check if training data is already prepared, or if paths are valid, if any path doesnt exist the program falls
-        # back to preparing the data. Otherwise, data from disk is loaded
-        if prep_data or not (train_path.exists() or validation_path.exists() or test_path.exists()):
-            if not (train_path.exists() or validation_path.exists() or test_path.exists()):
-                LOG.warning("Training data not found. Preparing training data from scratch.")
+        # load the model obj that stores all relevant data for training, if no model obj exists then create a new one
+        if model_out_path.exists():
+            with open(model_out_path, 'rb') as f:
+                model_obj = pkl.load(f)
+        else:
+            model_obj = {
+                'model_name': model_name,
+                'best_model': None,
+                'best_hps': None,
+                'history': None,
+                'train_mean': None,
+                'train_std': None,
+                'seasonal': None,
+                'window': None,
+                'train_df': None,
+                'validation_df': None,
+                'test_df': None
+            }
+
+        # check if training data is already prepared, if not fallback to preparing the data.
+        # Otherwise, data from disk is loaded
+        if (prep_data and ((model_obj['train_df'] is None)
+                           or (model_obj['validation_df'] is None)
+                           or (model_obj['test_df'] is None))):
+            LOG.info("Preparing training data.")
             self._prep_data()
             LOG.success(f"Successfully prepared training data for {model_name}")
 
-        elif not prep_data and (train_path.exists() and validation_path.exists() and test_path.exists()):
+        elif (not prep_data and ((model_obj['train_df'] is not None)
+                                or (model_obj['validation_df'] is not None)
+                                or (model_obj['test_df'] is not None))):
             LOG.info("Now loading training data from disk.")
-            with open(train_path, 'rb') as f:
-                self.train_df = pkl.load(f)
-            with open(validation_path, 'rb') as f:
-                self.validation_df = pkl.load(f)
-            with open(test_path, 'rb') as f:
-                self.test_df = pkl.load(f)
+            self.train_df = model_obj['train_df']
+            self.validation_df = model_obj['validation_df']
+            self.test_df = model_obj['test_df']
             LOG.success(f"Successfully loaded training data for {model_name}")
 
         # generate windows
@@ -372,13 +385,11 @@ class EpfPipeline(object):
         self.window = window
 
         # tune hyperparams, skip hyperparameter tuning if use_tuned_hyperparams is set to True
-        if use_tuned_hyperparams and (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
+        if use_tuned_hyperparams and (model_obj['best_hps'] is not None and model_obj['best_model'] is not None):
             LOG.info(f"Skipping hyperparameter tuning and loading tuned hyperparameters for {model_name} "
-                     f"from {tuned_hyperparams_path.as_posix()}.")
-            with open(tuned_model_path, 'rb') as f:
-                self.best_model = pkl.load(f)
-            with open(tuned_hyperparams_path, 'rb') as f:
-                self.best_hps = pkl.load(f)
+                     f"from {model_out_path.as_posix()}.")
+            self.best_model = model_obj['best_model']
+            self.best_hps = model_obj['best_hps']
         elif (not use_tuned_hyperparams) or (
                 use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists())):
             if not (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
@@ -407,27 +418,48 @@ class EpfPipeline(object):
                                            validation_data=window.val,
                                            callbacks=[early_stopping])
 
-        LOG.success(f"Successfully trained {model_name}."
-                    "Now saving...")
+        LOG.success(f"Successfully trained {model_name}. Now saving...")
 
         # save trained model to disk
         if not overwrite and model_out_path.exists():
             FileExistsError(
-                f"{model_out_path.as_posix()} already exists! If you want to overwrite it please set overwrite=True.")
+                f"Model {model_name} at Path {model_out_path.as_posix()} already exists! "
+                f"If you want to overwrite it please set overwrite=True.")
         else:
-            self.best_model.save(model_out_path, overwrite=True)
+            model_obj.update({
+                'model_name': model_name,
+                'best_model': self.best_model,
+                'best_hps': self.best_hps,
+                'history': self.history,
+                'train_mean': self.train_mean,
+                'train_std': self.train_std,
+                'seasonal': self.seasonal,
+                'window': self.window,
+                'train_df': self.train_df,
+                'validation_df': self.validation_df,
+                'test_df': self.test_df,
+            })
+            with open(model_out_path, 'wb') as f:
+                pkl.dump(model_obj, f, -1)
             LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
 
-    def evaluate(self, model_name: str, window: WindowGenerator):
+    def evaluate(self, model_name: str):
         """
         Evaluates the model on the test set and returns the performance metrics.
 
         :param model_name: Name of the model to be evaluated.
         :type model_name: str
-
-        :param window: WindowGenerator object containing the training, validation and test data.
-        :type window: WindowGenerator
         """
+        # load model to evaluate
+        model_path = (self._default_model_path / model_name).with_suffix('.pkl')
+        LOG.info(f"Loading trained model from {model_path}.")
+        with open(model_path, 'rb') as f:
+            model_obj = pkl.load(f)
+
+        # extract the relevant objects from the model object
+        model = model_obj['best_model']
+        window = model_obj['window']
+
         # save performance to disk
         if (Path.exists(self._processed_data_dir / "val_performance.pkl") and
                 Path.exists(self._processed_data_dir / "performance.pkl")):
@@ -441,8 +473,8 @@ class EpfPipeline(object):
             val_performance = {}
             performance = {}
 
-        val_performance[model_name] = self.best_model.evaluate(window.val, return_dict=True)
-        performance[model_name] = self.best_model.evaluate(window.test, verbose=0, return_dict=True)
+        val_performance[model_name] = model.evaluate(window.val, return_dict=True)
+        performance[model_name] = model.evaluate(window.test, verbose=0, return_dict=True)
 
         with open(self._processed_data_dir / "val_performance.pkl", 'wb') as f:
             pkl.dump(val_performance, f, -1)
@@ -452,7 +484,7 @@ class EpfPipeline(object):
 
     def predict(self, data: WindowGenerator, model_path: Path, predictions_dir: Path):
         """
-        Make predictions using the trained model. Denormalizes and deseasonalizes the predictions and saves them to disk.
+        Make predictions using the trained model. When no data is provided it will use the test data from the model object.
 
         :param data: Test dataset provided by ``WindowGenerator`` class.
         :type data: WindowGenerator
@@ -470,17 +502,16 @@ class EpfPipeline(object):
 
         # Load the model
         LOG.info(f"Loading model from {model_path}.")
-        model = keras.saving.load_model(model_path, compile=True)
+        with open(model_path, 'rb') as f:
+            model_obj = pkl.load(f)
+
+        model = model_obj['best_model']
         LOG.success(f"Successfully loaded model from {model_path}.")
 
-        preds = model.predict(data)
+        predictions = model.predict(data)
         LOG.success(f"Successfully predicted features.")
 
-        # denormalize predictions
-        preds = preds * self.train_std + self.train_mean
-
-        # deseasonalize predictions
-        seasonal = self.seasonal
+        self.predictions = predictions
 
         # save predictions to disk
         with open(predictions_path, 'wb') as f:
