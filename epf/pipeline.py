@@ -20,15 +20,16 @@ class EpfPipeline(object):
     A class to load and process raw data, build, tune and train the model and predict from new inputs.
     Configurable via ``FeatureConfig`` and ``ModelConfig``.
     """
+
     def __init__(
-        self,
-        feature_config: FeatureConfig = FeatureConfig(),
-        model_config: ModelConfig = ModelConfig(),
-        raw_data_dir: Path = RAW_DATA_DIR,
-        interim_data_dir: Path = INTERIM_DATA_DIR,
-        processed_data_dir: Path = PROCESSED_DATA_DIR,
-        train_data_dir: Path = TRAIN_DATA_DIR,
-        default_model_path: Path = MODELS_DIR,
+            self,
+            feature_config: FeatureConfig = FeatureConfig(),
+            model_config: ModelConfig = ModelConfig(),
+            raw_data_dir: Path = RAW_DATA_DIR,
+            interim_data_dir: Path = INTERIM_DATA_DIR,
+            processed_data_dir: Path = PROCESSED_DATA_DIR,
+            train_data_dir: Path = TRAIN_DATA_DIR,
+            default_model_path: Path = MODELS_DIR,
     ):
         """
         Initialize the pipeline with feature and model configurations. Default values should be sufficient. Change
@@ -69,11 +70,13 @@ class EpfPipeline(object):
         self.history = None
         self.predictions = None
         self.raw_data = None
+        self.seasonal = None
         self.test_df = None
         self.train_df = None
+        self.train_mean = None
+        self.train_std = None
         self.validation_df = None
         self.window = None
-
 
     def _load_data(self):
         """ Loads raw data and saves it to interim directory using the feature configuration.
@@ -107,7 +110,7 @@ class EpfPipeline(object):
         data_out = pd.concat(df, axis=1)
         raw_data_path = self._interim_data_dir / "raw_data"
 
-        LOG.info(f"Saving raw data to {raw_data_path}")
+        LOG.info(f"Saving raw data to {raw_data_path.as_posix()}")
         data_out.to_csv(raw_data_path, index=True)
 
         self.raw_data = data_out
@@ -147,9 +150,7 @@ class EpfPipeline(object):
         LOG.success(f"Finished seasonal decomposition.")
 
         # seasonal components are stored for the time being to access them later when predictions are made.
-        with open(seasonal_path, 'wb') as f:
-            pkl.dump(seasonal, f, -1)
-        LOG.success(f"Successfully saved seasonal components to {seasonal_path}")
+        self.seasonal = seasonal
 
         # create calendar features
         if generate_dummies:
@@ -176,9 +177,11 @@ class EpfPipeline(object):
         # only select the columns that are specified in FEATURE_DICT
         feature_path = self._processed_data_dir / "features.csv"
         feature_set: pd.DataFrame = data.loc[:, [k for k, v in feature_dict.items() if v['select'] == 1]]
+
+        LOG.info(f"Saving feature_set to {feature_path.as_posix()}.")
         feature_set.to_csv(feature_path, index=True)
 
-        LOG.success(f"Successfully saved generated features to {feature_path}")
+        LOG.success(f"Successfully saved generated features to {feature_path.as_posix()}")
         LOG.info(f"Finished generating features.")
 
         self.feature_set = feature_set
@@ -203,6 +206,9 @@ class EpfPipeline(object):
         train_mean = train_df.mean()
         train_std = train_df.std()
 
+        self.train_mean = train_mean
+        self.train_std = train_std
+
         self.train_df = (train_df - train_mean) / train_std
         self.validation_df = (validation_df - train_mean) / train_std
         self.test_df = (test_df - train_mean) / train_std
@@ -219,9 +225,9 @@ class EpfPipeline(object):
             pkl.dump(self.test_df, f, -1)
 
         LOG.success(f"Successfully saved data splits to \n"
-                    f"{str(data_path).join('train_df.pkl')}, \n"
-                    f"{str(data_path).join('validation_df.pkl')} and \n"
-                    f"{str(data_path).join('test_df.pkl')} ")
+                    f"{data_path.as_posix().join('train_df.pkl')}, \n"
+                    f"{data_path.as_posix().join('validation_df.pkl')} and \n"
+                    f"{data_path.as_posix().join('test_df.pkl')}")
         LOG.info(f"Finished generating training data.")
 
     def _prep_data(self):
@@ -236,7 +242,7 @@ class EpfPipeline(object):
                               model_name: str,
                               tuner_dir: Path,
                               tuned_model_path: Path,
-                              tuned_hyperparams_path: Path,):
+                              tuned_hyperparams_path: Path, ):
         """
         Tunes the hyperparameters for the provided model builder. Saves the best hyperparameters and the best model to disk.
         Also saves both properties to the class instance for streamlined use in training.
@@ -260,7 +266,7 @@ class EpfPipeline(object):
         :type tuned_hyperparams_path: Path
         """
         tuner = (kt.BayesianOptimization
-        (
+            (
             builder,
             objective='mean_absolute_error',
             max_trials=50,
@@ -293,15 +299,16 @@ class EpfPipeline(object):
         is {self.best_hps.get('learning_rate')}.
         """)
 
-
     def train(self, model_name: str, overwrite: bool, prep_data: bool = True, use_tuned_hyperparams: bool = False):
         """
-        Trains a model on the provided feature set using the model configuration. Saves the trained model to ``MODELS_DIR/model_name``.
+        Trains a model on the training data that is currently saved on the disk. The model configuration provides
+        necessary tuning and training parameters. When ``prep_data`` = ``True``, the data preparation pipeline is called
+        (see ``_prep_data()``). Saves the trained model to ``MODELS_DIR/model_name``.
 
         :param model_name: A name for the model that identifies it when saved.
         :type model_name: str
 
-        :param overwrite: Whether to overwrite existing model or not.
+        :param overwrite: Whether to overwrite an existing model or not.
         :type overwrite: bool
 
         :param prep_data: Whether to prepare the data or not. If set to False, preprocessed data is loaded from disk.
@@ -337,8 +344,8 @@ class EpfPipeline(object):
 
         # check if training data is already prepared, or if paths are valid, if any path doesnt exist the program falls
         # back to preparing the data. Otherwise, data from disk is loaded
-        if prep_data or not(train_path.exists() or validation_path.exists() or test_path.exists()):
-            if not(train_path.exists() or validation_path.exists() or test_path.exists()):
+        if prep_data or not (train_path.exists() or validation_path.exists() or test_path.exists()):
+            if not (train_path.exists() or validation_path.exists() or test_path.exists()):
                 LOG.warning("Training data not found. Preparing training data from scratch.")
             self._prep_data()
             LOG.success(f"Successfully prepared training data for {model_name}")
@@ -372,7 +379,8 @@ class EpfPipeline(object):
                 self.best_model = pkl.load(f)
             with open(tuned_hyperparams_path, 'rb') as f:
                 self.best_hps = pkl.load(f)
-        elif (not use_tuned_hyperparams) or (use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists())):
+        elif (not use_tuned_hyperparams) or (
+                use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists())):
             if not (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
                 LOG.warning("No tuned hyperparameters and model found at paths "
                             f"{tuned_model_path.as_posix()} and {tuned_hyperparams_path.as_posix()} for {model_name}. "
@@ -404,13 +412,13 @@ class EpfPipeline(object):
 
         # save trained model to disk
         if not overwrite and model_out_path.exists():
-            FileExistsError(f"{model_out_path.as_posix()} already exists! If you want to overwrite it please set overwrite=True.")
+            FileExistsError(
+                f"{model_out_path.as_posix()} already exists! If you want to overwrite it please set overwrite=True.")
         else:
             self.best_model.save(model_out_path, overwrite=True)
             LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
 
-
-    def eval(self, model_name: str, window: WindowGenerator):
+    def evaluate(self, model_name: str, window: WindowGenerator):
         """
         Evaluates the model on the test set and returns the performance metrics.
 
@@ -433,17 +441,6 @@ class EpfPipeline(object):
             val_performance = {}
             performance = {}
 
-        # before we evaluate we need to denormalize and deseasonalize the data
-        # first denormalize
-
-
-        # secondly deseasonalize with stored seasonal components
-        seasonal_path = self._fc.SEASONAL_OUT_PATH / "seasonal_components.pkl"
-        with open(seasonal_path, 'rb') as f:
-            seasonal_components = pkl.load(f)
-
-
-
         val_performance[model_name] = self.best_model.evaluate(window.val, return_dict=True)
         performance[model_name] = self.best_model.evaluate(window.test, verbose=0, return_dict=True)
 
@@ -453,10 +450,9 @@ class EpfPipeline(object):
         with open(self._processed_data_dir / "performance.pkl", 'wb') as f:
             pkl.dump(performance, f, -1)
 
-
     def predict(self, data: WindowGenerator, model_path: Path, predictions_dir: Path):
         """
-        Make predictions using the trained model.
+        Make predictions using the trained model. Denormalizes and deseasonalizes the predictions and saves them to disk.
 
         :param data: Test dataset provided by ``WindowGenerator`` class.
         :type data: WindowGenerator
@@ -477,8 +473,14 @@ class EpfPipeline(object):
         model = keras.saving.load_model(model_path, compile=True)
         LOG.success(f"Successfully loaded model from {model_path}.")
 
-        self.predictions = model.predict(data)
+        preds = model.predict(data)
         LOG.success(f"Successfully predicted features.")
+
+        # denormalize predictions
+        preds = preds * self.train_std + self.train_mean
+
+        # deseasonalize predictions
+        seasonal = self.seasonal
 
         # save predictions to disk
         with open(predictions_path, 'wb') as f:

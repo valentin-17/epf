@@ -9,9 +9,9 @@ def create_dir(path: Path, description: str):
     """Creates a directory if it does not exist and logs its path."""
     if not path.exists():
         path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"{description} has been created. Path is: {path}")
+        logger.info(f"{description} has been created. Path is: {path.as_posix()}")
     else:
-        logger.info(f"{description} path is: {path}")
+        logger.info(f"{description} path is: {path.as_posix()}")
 
 # Paths
 PROJ_ROOT: Path = Path(__file__).resolve().parents[1]
