@@ -199,16 +199,17 @@ def builder(hp):
                                                      step=dr_step)))
 
     # add hidden layers and dropout layers if dropout is used
-    for i in range(0, hp.Int('num_layers', min_value=n_min, max_value=n_max, step=n_step)):
-        model.add(keras.layers.Dense(units=hp.Int(name='units_' + str(i),
-                                                  min_value=u_min,
-                                                  max_value=u_max,
-                                                  step=u_step), activation="relu"))
-        if drop:
-            model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
-                                                         min_value=dr_min,
-                                                         max_value=dr_max,
-                                                         step=dr_step)))
+    if n_max > 0:
+        for i in range(0, hp.Int('num_layers', min_value=n_min, max_value=n_max, step=n_step)):
+            model.add(keras.layers.Dense(units=hp.Int(name='units_' + str(i),
+                                                      min_value=u_min,
+                                                      max_value=u_max,
+                                                      step=u_step), activation="relu"))
+            if drop:
+                model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
+                                                             min_value=dr_min,
+                                                             max_value=dr_max,
+                                                             step=dr_step)))
 
     # introduce dense layer with out_steps * num_features to implement single shot forecasting, needs to be reshaped
     # to [out_steps, num_features] afterward.

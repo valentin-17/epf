@@ -86,6 +86,24 @@ extract all the information you need from the dictionary. The models are saved i
 }
 ```
 
+Model naming convention is as follows: 
+```python
+{
+  'mb': ['lstm', 'gru', 'conv'],
+  'fs': 'features',
+  'hl': 'hl0',
+  'dr': ['drY', 'drN'],
+}
+```
+with 
+- mb = the model builder that has been used
+- fs = the features that have been used
+- hl = specifying the maximum hidden layers that are configured
+- dr = whether to use dropout
+
+Final name should look like this: lstm_all_features_hl5_drN. This would translate to a LSTM model with all features,
+a maximum of 5 hidden layers and no dropout.
+
 To train a new model please configure your settings in the `config.py` file.
 
 The class EpfPipeline in `epf/pipeline.py` is the backbone of the epf library.

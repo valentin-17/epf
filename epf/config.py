@@ -248,6 +248,11 @@ class FeatureConfig:
     GENERATE_LAGS: bool = True
     GENERATE_DUMMIES: bool = True
 
+    def __str__(self):
+        return (f"WINDOW_LENGTH: {self.WINDOW_LENGTH}\n"
+                f"N_SIGMA: {self.N_SIGMA}\n"
+                f"METHOD: {self.METHOD}\n")
+
 
 class ModelConfig:
     """
@@ -319,7 +324,6 @@ class ModelConfig:
     :ivar LABEL_COL: Column name to use as label.
     :type LABEL_COL: str
     """
-
     TRAIN_SPLIT: float = 0.7
     VALIDATION_SPLIT: float = 0.9
 
@@ -348,9 +352,34 @@ class ModelConfig:
     USE_DROPOUT: bool = True
 
     NUM_LAYERS_MIN: int = 0
-    NUM_LAYERS_MAX: int = 5
+    NUM_LAYERS_MAX: int = 0
     NUM_LAYERS_STEP: int = 1
 
-    MAX_TRIALS: int = 10
+    MAX_TRIALS: int = 50
 
     LABEL_COL = 'de_prices_hat_rm_seasonal'
+
+    def __str__(self):
+        return (f"TRAIN_SPLIT: {self.TRAIN_SPLIT}\n"
+                f"VALIDATION_SPLIT: {self.VALIDATION_SPLIT}\n"
+                f"MAX_EPOCHS: {self.MAX_EPOCHS}\n"
+                f"OUT_STEPS: {self.OUT_STEPS}\n"
+                f"MODEL_BUILDER: {self.MODEL_BUILDER}\n"
+                f"NUM_FEATURES: {self.NUM_FEATURES}\n"
+                f"UNIT_MIN_VALUE: {self.UNIT_MIN_VALUE}\n"
+                f"UNIT_MAX_VALUE: {self.UNIT_MAX_VALUE}\n"
+                f"UNIT_MAX_VALUE_CONV: {self.UNIT_MAX_VALUE_CONV}\n"
+                f"UNIT_STEP: {self.UNIT_STEP}\n"
+                f"KERNEL_SIZE_MIN_VALUE: {self.KERNEL_SIZE_MIN_VALUE}\n"
+                f"KERNEL_SIZE_MAX_VALUE: {self.KERNEL_SIZE_MAX_VALUE}\n"
+                f"KERNEL_SIZE_STEP: {self.KERNEL_SIZE_STEP}\n"
+                f"LEARNING_RATE: {self.LEARNING_RATE}\n"
+                f"DROPOUT_RATE_MIN_VALUE: {self.DROPOUT_RATE_MIN_VALUE}\n"
+                f"DROPOUT_RATE_MAX_VALUE: {self.DROPOUT_RATE_MAX_VALUE}\n"
+                f"DROPOUT_RATE_STEP: {self.DROPOUT_RATE_STEP}\n"
+                f"USE_DROPOUT: {self.USE_DROPOUT}\n"
+                f"NUM_LAYERS_MIN: {self.NUM_LAYERS_MIN}\n"
+                f"NUM_LAYERS_MAX: {self.NUM_LAYERS_MAX}\n"
+                f"NUM_LAYERS_STEP: {self.NUM_LAYERS_STEP}\n"
+                f"MAX_TRIALS: {self.MAX_TRIALS}\n"
+                f"LABEL_COL: {self.LABEL_COL}\n")

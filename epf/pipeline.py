@@ -1,5 +1,7 @@
 import re
+import time
 from pathlib import Path
+from time import strftime
 
 import keras_tuner as kt
 
@@ -65,6 +67,8 @@ class EpfPipeline(object):
         self._train_data_dir = train_data_dir
         self._default_model_path = default_model_path
 
+        self.timings = {}
+
         self.best_hps = None
         self.best_model = None
         self.feature_set = None
@@ -78,6 +82,10 @@ class EpfPipeline(object):
         self.train_std = None
         self.validation_df = None
         self.window = None
+
+        print(f"Pipeline initialized with:\n"
+              f"FeatureConfig: \n{self._fc}\n"
+              f"ModelConfig: \n{self._mc}\n")
 
     def _load_data(self):
         """ Loads raw data and saves it to interim directory using the feature configuration.
@@ -118,7 +126,9 @@ class EpfPipeline(object):
 
         self.raw_data = data_out
         end = timer()
-        LOG.log(f"Data loading took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'data_loading' : t_elapsed})
+        LOG.info(f"Data loading took {t_elapsed}.")
 
     def _generate_features(self):
         """
@@ -191,7 +201,9 @@ class EpfPipeline(object):
 
         self.feature_set = feature_set
         end = timer()
-        LOG.log(f"Feature generation took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'feature_generation': t_elapsed})
+        LOG.info(f"Feature generation took {t_elapsed}.")
 
     def _generate_training_data(self):
         """
@@ -238,7 +250,9 @@ class EpfPipeline(object):
                     f"{data_path.as_posix().join('test_df.pkl')}")
         LOG.info(f"Finished generating training data.")
         end = timer()
-        LOG.log(f"Training data generation took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'training_data_generation': t_elapsed})
+        LOG.info(f"Training data generation took {t_elapsed}.")
 
     def _prep_data(self):
         """ Bundles all data preparation steps together for a single call in ``train``"""
@@ -307,7 +321,9 @@ class EpfPipeline(object):
             pkl.dump(self.best_hps, f)
 
         end = timer()
-        LOG.log(f"Hyperparameter tuning took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'hp_tuning': t_elapsed})
+        LOG.info(f"Hyperparameter tuning took {t_elapsed}.")
 
     def train(self, model_name: str, overwrite: bool, prep_data: bool = True, use_tuned_hyperparams: bool = False):
         """
@@ -454,7 +470,9 @@ class EpfPipeline(object):
             LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
 
         end = timer()
-        LOG.log(f"Training took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'training': t_elapsed})
+        LOG.info(f"Training took {t_elapsed}.")
 
     def evaluate(self, model_name: str):
         """
@@ -497,7 +515,9 @@ class EpfPipeline(object):
             pkl.dump(performance, f, -1)
 
         end = timer()
-        LOG.log(f"Evaluation took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'evaluation': t_elapsed})
+        LOG.info(f"Evaluation took {t_elapsed}.")
 
     def predict(self, data: WindowGenerator, model_path: Path, predictions_dir: Path):
         """
@@ -537,4 +557,6 @@ class EpfPipeline(object):
         LOG.success(f"Successfully saved predictions to {predictions_path}")
 
         end = timer()
-        LOG.log(f"Prediction took {end - start:.2f} seconds.")
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'prediction': t_elapsed})
+        LOG.info(f"Prediction took {t_elapsed}.")
