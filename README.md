@@ -5,16 +5,7 @@ This repository contains the code for my bachelors thesis "Forecasting electrici
 
 ---
 
-**Table of Contents**
-
-- [Initial Feature Selection](#initial-feature-selection)
-- [Data Preprocessing](#data-preprocessing)
-  - [Feature Analysis](#feature-analysis)
-  - [Feature Engineering](#feature-engineering)
-
----
-
-### Initial Feature Selection
+### Available raw data
 
 *All timeseries were exported in UTC time format for consistency.*
 
@@ -36,33 +27,71 @@ This repository contains the code for my bachelors thesis "Forecasting electrici
 |           Prices           |          DK2          |     hourly     |  csv   | 2022-12-31<br>T23:00+00:00 | 2024-12-31<br>T22:00+00:00 | ENTSO-E |                    [DK2 Prices 2023](https://www.energy-charts.info/charts/price_spot_market/chart.htm?l=de&c=DK&legendItems=7y5&year=2023&interval=year&timezone=utc)<br>[DK2 Prices 2024](https://www.energy-charts.info/charts/price_spot_market/chart.htm?l=de&c=DK&legendItems=7y5&year=2024&interval=year&timezone=utc)                    |
 |           Prices           |          FR           |     hourly     |  csv   | 2022-12-31<br>T23:00+00:00 | 2024-12-31<br>T22:00+00:00 | ENTSO-E |                    [FR Prices 2023](https://www.energy-charts.info/charts/price_spot_market/chart.htm?l=de&c=FR&legendItems=8y6&year=2023&interval=year&timezone=utc)<br>[FR Prices 2024 ](https://www.energy-charts.info/charts/price_spot_market/chart.htm?l=de&c=FR&legendItems=8y6&year=2024&interval=year&timezone=utc)                     |
 
-### Data Preprocessing
+### Feature set
 
-Explanatory data analysis is done in ```epf/notebooks/exploratory_analysis.ipynb```.
+The list of available features after outlier removal and seasonal decomposition is shown in the table below. 
+The features are used to train the models for the price forecasting task. Based on the configuration file, different
+features can be selected for training.
 
-#### Feature Analysis
+| Feature                                 | Outlier<br/> removal | Seasonal <br/> decomp. |
+|-----------------------------------------|:--------------------:|:----------------------:|
+| _Prices_                                |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;DE-LU           |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;CH              |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;DK1             |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;DK2             |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;FR              |          x           |           x            |
+| _Price lags $^1$_                       |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;1-Hour          |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;12-Hour         |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;24-Hour         |          x           |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;168-Hour        |          x           |           x            |
+| _German generation_                     |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;Solar           |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;Wind Onshore    |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;Wind Offshore   |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;Gas             |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;Lignite         |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;Hard Coal       |                      |           x            |
+| _Load_                                  |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;DE              |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;CH              |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;DK              |                      |           x            |
+| &nbsp;&nbsp;&nbsp;&nbsp;FR              |                      |           x            |
+| _Dummies_                               |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;Month           |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;Day of the week |                      |                        |
+| &nbsp;&nbsp;&nbsp;&nbsp;holiday         |                      |                        |
 
-For feature analysis all timeseries were read into pandas DataFrames. Timeseries with a quarter hourly frequency were 
-aggregated to the hour level using mean gruping. All Dataframes were then merged into a single DataFrame. 
-Initial feature exploration shows that the features are seasonal and non stationary timeseries:
+$^1$ only DE-LU bidding zone
 
-![Visual Feature Overview](./reports/figures/raw_data_overview.png)
+### Models
 
-The pearson correlation coefficients for the feature "Prices" show a similar positive correlation between de_lu_prices 
-and the German load as well as the French load. Likewise all VRE generation features show a negative correlation with
-the prices, with the offshore wind generation having a slightly weaker correlation than onshore wind generation and
-solar generation.
+There are a number of pretrained models available in the `models` folder. To access a model load it with pickle and 
+extract all the information you need from the dictionary. The models are saved in the following format:
 
-![Price correlation coefficients](./reports/figures/de_lu_price_correlations.png)
+```python
+{
+  'model_name': str,
+  'best_model': Keras.Sequential,
+  'best_hps': kt.HyperParameters,
+  'history': Keras.History,
+  'train_mean': pd.DataFrame,
+  'train_std': pd.DataFrame,
+  'seasonal': dict,
+  'window': WindowGenerator,
+  'train_df': pd.DataFrame,
+  'validation_df': pd.DataFrame,
+  'test_df': pd.DataFrame,
+}
+```
 
-### Feature engineering
+To train a new model please configure your settings in the `config.py` file.
 
-Some timeseries (most notably de_lu_prices, ch_load and dk_load) have extreme outliers. 
-Outlier filtering is done using a hampel filter [[3]](./references/refs.md) with window size = 72 hours 
-and a threshold of 3 standard deviations.
-Note that we cant use log transformation since there could be zero and negative values for which the log is not defined.
-All timeseries are also deseasonalized using stl decomposition as RNNs perform weaker when trying to learn seasonal
-patterns [[5]](./references/refs.md).
-After normalization the resulting distributions of the features are shown in the following plot:
+The class EpfPipeline in `epf/pipeline.py` is the backbone of the epf library.
+It exposes three methods: `train`, `evaluate` and `predict`. 
+All of these methods can be called from a simple Jupyter notebook.
 
-![Feature Distributions](./reports/figures/normalized_data_distribution.png)
+When passing a new `model_name` to the `train` method, the pipeline will automatically train a new model.
+In that case the parameters prep_data has to be set to True and use_tuned_hyperparams has to be set to False. 
+Otherwise, there is no associated training data and no tuned hyperparameters exist to train the new model.
