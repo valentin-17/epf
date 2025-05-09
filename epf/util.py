@@ -158,11 +158,10 @@ def builder(hp):
     k_min, k_max, k_step = mc.KERNEL_SIZE_MIN_VALUE, mc.KERNEL_SIZE_MAX_VALUE, mc.KERNEL_SIZE_STEP
     l_rate = mc.LEARNING_RATE
     dr_min, dr_max, dr_step = mc.DROPOUT_RATE_MIN_VALUE, mc.DROPOUT_RATE_MAX_VALUE, mc.DROPOUT_RATE_STEP
-    d = mc.USE_DROPOUT
+    drop = mc.USE_DROPOUT
     n_min, n_max, n_step = mc.NUM_LAYERS_MIN, mc.NUM_LAYERS_MAX, mc.NUM_LAYERS_STEP
 
     lr = hp.Choice(name='learning_rate', values=l_rate)
-    drop = hp.Boolean(name='drop', default=d)
 
     out_steps = mc.OUT_STEPS
     model_builder = mc.MODEL_BUILDER
