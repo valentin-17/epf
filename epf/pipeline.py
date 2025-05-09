@@ -8,6 +8,7 @@ import keras
 import pickle as pkl
 import pandas as pd
 from pandas import DataFrame
+from timeit import default_timer as timer
 
 from epf.config import FeatureConfig, ModelConfig, MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, \
     TRAIN_DATA_DIR, LOG
@@ -81,6 +82,8 @@ class EpfPipeline(object):
     def _load_data(self):
         """ Loads raw data and saves it to interim directory using the feature configuration.
         """
+        start = timer()
+
         if self.raw_data is not None:
             LOG.info("Raw data has already been loaded. Skipping loading.")
             return
@@ -114,6 +117,8 @@ class EpfPipeline(object):
         data_out.to_csv(raw_data_path, index=True)
 
         self.raw_data = data_out
+        end = timer()
+        LOG.log(f"Data loading took {end - start:.2f} seconds.")
 
     def _generate_features(self):
         """
@@ -122,6 +127,7 @@ class EpfPipeline(object):
         Note that the current implementation of ``generate_features`` is slow because the feature engineering pipeline
         is ran for each feature regardless if its used later on during training.
         """
+        start = timer()
         if self.feature_set is not None:
             LOG.info("Feature Set has already been generated. Skipping feature generation.")
             return
@@ -184,11 +190,14 @@ class EpfPipeline(object):
         LOG.info(f"Finished generating features.")
 
         self.feature_set = feature_set
+        end = timer()
+        LOG.log(f"Feature generation took {end - start:.2f} seconds.")
 
     def _generate_training_data(self):
         """
         Generates Training, Validation and Test data and saves them to ``processed_data_dir``.
         """
+        start = timer()
         if self.train_df is not None:
             LOG.info("Training data has already been generated. Skipping training data generation.")
             return
@@ -228,6 +237,8 @@ class EpfPipeline(object):
                     f"{data_path.as_posix().join('validation_df.pkl')} and \n"
                     f"{data_path.as_posix().join('test_df.pkl')}")
         LOG.info(f"Finished generating training data.")
+        end = timer()
+        LOG.log(f"Training data generation took {end - start:.2f} seconds.")
 
     def _prep_data(self):
         """ Bundles all data preparation steps together for a single call in ``train``"""
@@ -264,6 +275,7 @@ class EpfPipeline(object):
         :param tuned_hyperparams_path: Path to save the tuned hyperparameters.
         :type tuned_hyperparams_path: Path
         """
+        start = timer()
         max_trails = self._mc.MAX_TRIALS
 
         tuner = (kt.BayesianOptimization
@@ -294,11 +306,8 @@ class EpfPipeline(object):
         with open(tuned_hyperparams_path, 'wb') as f:
             pkl.dump(self.best_hps, f)
 
-        LOG.info(f"""
-        The hyperparameter search is complete. The optimal number of units in the first densely-connected
-        layer is {self.best_hps.get('units')} and the optimal learning rate for the optimizer
-        is {self.best_hps.get('learning_rate')}.
-        """)
+        end = timer()
+        LOG.log(f"Hyperparameter tuning took {end - start:.2f} seconds.")
 
     def train(self, model_name: str, overwrite: bool, prep_data: bool = True, use_tuned_hyperparams: bool = False):
         """
@@ -319,6 +328,7 @@ class EpfPipeline(object):
         :param use_tuned_hyperparams: Whether to use already tuned hyperparameters from disk or tune them again for this training loop.
         :type use_tuned_hyperparams: bool
         """
+        start = timer()
         tuner_dir = MODELS_DIR / "tuner"
         # failsafe if tuner dir does not exist1
         if not tuner_dir.exists():
@@ -443,6 +453,9 @@ class EpfPipeline(object):
                 pkl.dump(model_obj, f, -1)
             LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
 
+        end = timer()
+        LOG.log(f"Training took {end - start:.2f} seconds.")
+
     def evaluate(self, model_name: str):
         """
         Evaluates the model on the test set and returns the performance metrics.
@@ -450,6 +463,7 @@ class EpfPipeline(object):
         :param model_name: Name of the model to be evaluated.
         :type model_name: str
         """
+        start = timer()
         # load model to evaluate
         model_path = (self._default_model_path / model_name).with_suffix('.pkl')
         LOG.info(f"Loading trained model from {model_path}.")
@@ -482,6 +496,9 @@ class EpfPipeline(object):
         with open(self._processed_data_dir / "performance.pkl", 'wb') as f:
             pkl.dump(performance, f, -1)
 
+        end = timer()
+        LOG.log(f"Evaluation took {end - start:.2f} seconds.")
+
     def predict(self, data: WindowGenerator, model_path: Path, predictions_dir: Path):
         """
         Make predictions using the trained model. When no data is provided it will use the test data from the model object.
@@ -495,6 +512,7 @@ class EpfPipeline(object):
         :param predictions_dir: Path to save the predictions.
         :type predictions_dir: pathlib.Path
         """
+        start = timer()
         # model_name extracts the literal name of the model out of the model path
         match = re.search(r'\w+?(?=\.)', str(model_path))
         model_name = match.group(0) if match is not None else "default"
@@ -517,3 +535,6 @@ class EpfPipeline(object):
         with open(predictions_path, 'wb') as f:
             pkl.dump(self.predictions, f, -1)
         LOG.success(f"Successfully saved predictions to {predictions_path}")
+
+        end = timer()
+        LOG.log(f"Prediction took {end - start:.2f} seconds.")
