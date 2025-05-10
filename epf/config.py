@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from loguru import logger
@@ -259,10 +260,10 @@ class ModelConfig:
     Configuration class for model building and training.
 
     :ivar TRAIN_SPLIT: Upper boundary for the training split.
-    :type TRAIN_SPLIT: float
+    :type TRAIN_SPLIT: float | datetime
 
     :ivar VALIDATION_SPLIT: Upper boundary for the validation split.
-    :type VALIDATION_SPLIT: float
+    :type VALIDATION_SPLIT: float | datetime
 
     :ivar MAX_EPOCHS: The upper boundary for epochs used during training.
     :type MAX_EPOCHS: int
@@ -324,8 +325,8 @@ class ModelConfig:
     :ivar LABEL_COL: Column name to use as label.
     :type LABEL_COL: str
     """
-    TRAIN_SPLIT: float = 0.7
-    VALIDATION_SPLIT: float = 0.9
+    TRAIN_SPLIT: float | datetime = datetime(2023, 9, 30, 22, tzinfo = timezone.utc)
+    VALIDATION_SPLIT: float | datetime = datetime(2023, 12, 31, 22, tzinfo = timezone.utc)
 
     MAX_EPOCHS: int = 20
     OUT_STEPS: int = 24

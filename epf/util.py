@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import keras
 import re
 import numpy as np
@@ -5,6 +7,7 @@ import pandas as pd
 import seaborn as sns
 import tensorflow as tf
 from matplotlib import pyplot as plt
+from pandas import Timestamp
 from sktime.transformations.series.impute import Imputer
 from sktime.transformations.series.outlier_detection import HampelFilter
 from statsmodels.tsa.seasonal import MSTL
@@ -123,29 +126,31 @@ def remove_seasonal_component(data: pd.DataFrame,
     return data, seasonal_component
 
 
-def split_data(data: pd.DataFrame, train: float = 0.7, validation: float = 0.9) -> tuple[
+def split_data(data: pd.DataFrame, train: float | datetime = 0.7, validation: float | datetime = 0.9) -> tuple[
     pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Splits data into train, validation and test sets. Train and Validation params are the upper boundary for their respective splits. Lower boundaries are calculated.
 
     :param data: DataFrame to be split.
     :type data: pd.DataFrame
 
-    :param train: Fraction of data to be used for training,
+    :param train: Fraction of data to be used for training, or start timestamp of training data,
         defaults to 0.7
-    :type train: float
+    :type train: float | datetime
 
-    :param validation: Fraction of data to be used for validation,
+    :param validation: Fraction of data to be used for validation, or start timestamp of training data,
         defaults to 0.9
-    :type validation: float
+    :type validation: float | datetime
 
     :returns: Train, Validation and Test DataFrames
     :rtype: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
     """
-
-    train_split = int(len(data) * train)
-    validation_split = int(len(data) * validation)
-
-    return data[0:train_split], data[train_split:validation_split], data[validation_split:]
+    if isinstance(train, datetime) and isinstance(validation, datetime):
+        return data[:train], data[train+timedelta(hours=1):validation], data[validation+timedelta(hours=1):]
+    else:
+        # work out train and validation splits if they are passed as floats
+        train_split = int(len(data) * train)
+        validation_split = int(len(data) * validation)
+        return data[:train_split], data[train_split:validation_split], data[validation_split:]
 
 
 def builder(hp):
