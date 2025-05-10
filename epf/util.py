@@ -160,13 +160,14 @@ def builder(hp):
     """
     mc = ModelConfig()
     u_min, u_max, u_step = mc.UNIT_MIN_VALUE, mc.UNIT_MAX_VALUE, mc.UNIT_STEP
-    k_min, k_max, k_step = mc.KERNEL_SIZE_MIN_VALUE, mc.KERNEL_SIZE_MAX_VALUE, mc.KERNEL_SIZE_STEP
-    l_rate = mc.LEARNING_RATE
+    l_min, l_max, l_step = mc.LR_MIN_VALUE, mc.LR_MAX_VALUE, mc.LR_STEP
     dr_min, dr_max, dr_step = mc.DROPOUT_RATE_MIN_VALUE, mc.DROPOUT_RATE_MAX_VALUE, mc.DROPOUT_RATE_STEP
-    drop = mc.USE_DROPOUT
     n_min, n_max, n_step = mc.NUM_LAYERS_MIN, mc.NUM_LAYERS_MAX, mc.NUM_LAYERS_STEP
 
-    lr = hp.Choice(name='learning_rate', values=l_rate)
+    lr = hp.Float(name='learning_rate', min_value=l_min, max_value=l_max, step=l_step)
+    nl = hp.Int(name = 'num_layers', min_value=n_min, max_value=n_max, step=n_step)
+
+    hidden_layers = mc.USE_HIDDEN_LAYERS
 
     out_steps = mc.OUT_STEPS
     model_builder = mc.MODEL_BUILDER
@@ -174,47 +175,55 @@ def builder(hp):
 
     model = keras.Sequential()
 
-    # differentiate between the input layers whether to use lstm, gru or conv
+    # initially return sequences is determined whether hidden layers are used or not, in a single layer approach
+    # return sequences should be false because this one layer already outputs the predictions
+    # otherwise set to true because the next layer needs the output of the previous layer
+    # with shape [batch_size, time_steps, features] and ndims = 3
+    # if hidden_layers is set to False then the model is a single layer model thus return_sequences should be false
+    rs = hidden_layers
+
+    # differentiate between the input layers whether to use lstm or gru
     if model_builder == "LSTM":
         model.add(keras.layers.LSTM(hp.Int(name='units',
                                            min_value=u_min,
                                            max_value=u_max,
-                                           step=u_step), return_sequences=False))
+                                           step=u_step), return_sequences=rs))
 
     if model_builder == "GRU":
         model.add(keras.layers.GRU(hp.Int(name='units',
                                           min_value=u_min,
                                           max_value=u_max,
-                                          step=u_step), return_sequences=False))
-
-    if model_builder == "CONV":
-        ks = hp.Int(name='kernel_size', min_value=k_min, max_value=k_max, step=k_step)
-
-        model.add(keras.layers.Lambda(lambda x: x[:, -ks:, :]))
-        model.add(keras.layers.Conv1D(hp.Int(name='units',
-                                             min_value=u_min,
-                                             max_value=u_max,
-                                             step=u_step), activation='relu', kernel_size=ks))
+                                          step=u_step), return_sequences=rs))
 
     # after the initial layer, model building is identical
-    if drop:
-        model.add(keras.layers.Dropout(rate=hp.Float(name='dropout',
-                                                     min_value=dr_min,
-                                                     max_value=dr_max,
-                                                     step=dr_step)))
+    model.add(keras.layers.Dropout(rate=hp.Float(name='dropout',
+                                                 min_value=dr_min,
+                                                 max_value=dr_max,
+                                                 step=dr_step)))
 
-    # add hidden layers and dropout layers if dropout is used
-    if n_max > 0:
-        for i in range(0, hp.Int('num_layers', min_value=n_min, max_value=n_max, step=n_step)):
-            model.add(keras.layers.Dense(units=hp.Int(name='units_' + str(i),
-                                                      min_value=u_min,
-                                                      max_value=u_max,
-                                                      step=u_step), activation="relu"))
-            if drop:
-                model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
-                                                             min_value=dr_min,
-                                                             max_value=dr_max,
-                                                             step=dr_step)))
+    # add hidden layers and dropout layers, if hidden layers is True
+    # effectively making this a rnn stacked approach with either lstm or gru layers
+    if hidden_layers:
+        for i in range(0, nl):
+            # set the return sequences to true for all intermediary layers
+            # the last layer receives return_sequences = False to output the final predictions with ndims = 2
+            rs = hidden_layers if i < nl - 1 else False
+
+            if model_builder == "LSTM":
+                model.add(keras.layers.LSTM(units=hp.Int(name='units_' + str(i),
+                                                         min_value=u_min,
+                                                         max_value=u_max,
+                                                         step=u_step), return_sequences=rs))
+            if model_builder == "GRU":
+                model.add(keras.layers.GRU(units=hp.Int(name='units_' + str(i),
+                                                        min_value=u_min,
+                                                        max_value=u_max,
+                                                        step=u_step), return_sequences=rs))
+
+            model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
+                                                         min_value=dr_min,
+                                                         max_value=dr_max,
+                                                         step=dr_step)))
 
     # introduce dense layer with out_steps * num_features to implement single shot forecasting, needs to be reshaped
     # to [out_steps, num_features] afterward.
@@ -223,9 +232,13 @@ def builder(hp):
     model.add(keras.layers.Reshape([out_steps, num_features]))
 
     # compile the model
-    model.compile(loss=keras.losses.MeanSquaredError(),
+    model.compile(loss=keras.losses.MeanAbsoluteError(),
                   optimizer=keras.optimizers.Adam(learning_rate=lr),
-                  metrics=[keras.metrics.MeanAbsoluteError()])
+                  metrics=[
+                      keras.metrics.MeanAbsoluteError(),
+                      keras.metrics.RootMeanSquaredError(),
+                      keras.metrics.MeanAbsolutePercentageError()
+                  ])
 
     return model
 

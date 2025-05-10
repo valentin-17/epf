@@ -127,7 +127,7 @@ class EpfPipeline(object):
         self.raw_data = data_out
         end = timer()
         t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
-        self.timings.update({'data_loading' : t_elapsed})
+        self.timings.update({'data_loading': t_elapsed})
         LOG.info(f"Data loading took {t_elapsed}.")
 
     def _generate_features(self):
@@ -205,19 +205,25 @@ class EpfPipeline(object):
         self.timings.update({'feature_generation': t_elapsed})
         LOG.info(f"Feature generation took {t_elapsed}.")
 
-    def _generate_training_data(self):
+    def _generate_training_data(self, path: Path | None = None):
         """
-        Generates Training, Validation and Test data and saves them to ``processed_data_dir``.
+        Generates Training, Validation and Test data.
         """
         start = timer()
         if self.train_df is not None:
             LOG.info("Training data has already been generated. Skipping training data generation.")
             return
 
-        feature_set = self.feature_set
+        if path is not None:
+            LOG.info(f"Loading training data from {path}.")
+            feature_dict = self._fc.FEATURE_DICT
+            data = pd.read_csv(path, index_col=0, parse_dates=True)
+            feature_set: pd.DataFrame = data.loc[:, [k for k, v in feature_dict.items() if v['select'] == 1]]
+        else:
+            feature_set = self.feature_set
+
         train_split = self._mc.TRAIN_SPLIT
         validation_split = self._mc.VALIDATION_SPLIT
-        data_path = self._train_data_dir
 
         # generate training splits
         train_df, validation_df, test_df = split_data(feature_set, train_split, validation_split)
@@ -233,21 +239,6 @@ class EpfPipeline(object):
         self.validation_df = (validation_df - train_mean) / train_std
         self.test_df = (test_df - train_mean) / train_std
 
-        # save train, val and test sets to csv
-        # use the highest protocol available, denoted by -1
-        with open(data_path / "train_df.pkl", 'wb') as f:
-            pkl.dump(self.train_df, f, -1)
-
-        with open(data_path / "validation_df.pkl", 'wb') as f:
-            pkl.dump(self.validation_df, f, -1)
-
-        with open(data_path / "test_df.pkl", 'wb') as f:
-            pkl.dump(self.test_df, f, -1)
-
-        LOG.success(f"Successfully saved data splits to \n"
-                    f"{data_path.as_posix().join('train_df.pkl')}, \n"
-                    f"{data_path.as_posix().join('validation_df.pkl')} and \n"
-                    f"{data_path.as_posix().join('test_df.pkl')}")
         LOG.info(f"Finished generating training data.")
         end = timer()
         t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
@@ -354,6 +345,9 @@ class EpfPipeline(object):
         tuned_model_path = (tuner_dir / model_name).with_suffix('.pkl')
         tuned_hyperparams_path = (tuner_dir / f"{model_name}_hyperparameters").with_suffix('.pkl')
         out_steps = self._mc.OUT_STEPS
+        seasonality_period = self._mc.SEASONALITY_PERIOD
+        input_width_factor = self._mc.INPUT_WIDTH_FACTOR
+        input_width = int(seasonality_period * input_width_factor)
         max_epochs = self._mc.MAX_EPOCHS
         label_col = self._mc.LABEL_COL
 
@@ -383,27 +377,22 @@ class EpfPipeline(object):
 
         # check if training data is already prepared, if not fallback to preparing the data.
         # Otherwise, data from disk is loaded
-        if (prep_data and ((model_obj['train_df'] is None)
-                           or (model_obj['validation_df'] is None)
-                           or (model_obj['test_df'] is None))):
+        if prep_data:
             LOG.info("Preparing training data.")
             self._prep_data()
             LOG.success(f"Successfully prepared training data for {model_name}")
 
-        elif (not prep_data and ((model_obj['train_df'] is not None)
-                                or (model_obj['validation_df'] is not None)
-                                or (model_obj['test_df'] is not None))):
+        elif not prep_data:
             LOG.info("Now loading training data from disk.")
-            self.train_df = model_obj['train_df']
-            self.validation_df = model_obj['validation_df']
-            self.test_df = model_obj['test_df']
+            feature_path = PROCESSED_DATA_DIR / "features.csv"
+            self._generate_training_data(feature_path)
             LOG.success(f"Successfully loaded training data for {model_name}")
 
         # generate windows
         window = WindowGenerator(train_df=self.train_df,
                                  validation_df=self.validation_df,
                                  test_df=self.test_df,
-                                 input_width=24,
+                                 input_width=input_width,
                                  label_width=out_steps,
                                  shift=out_steps,
                                  label_columns=[label_col], )
@@ -418,7 +407,7 @@ class EpfPipeline(object):
             self.best_hps = model_obj['best_hps']
         elif (not use_tuned_hyperparams) or (
                 use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists())):
-            if not (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
+            if use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
                 LOG.warning("No tuned hyperparameters and model found at paths "
                             f"{tuned_model_path.as_posix()} and {tuned_hyperparams_path.as_posix()} for {model_name}. "
                             "Defaulting to fresh Hyperparameter tuning.")

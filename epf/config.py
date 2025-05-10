@@ -271,7 +271,13 @@ class ModelConfig:
     :ivar OUT_STEPS: The amount of timesteps to predict. Default is 24 i.e. 1 day.
     :type OUT_STEPS: int
 
-    :ivar MODEL_BUILDER: The model builder to use. Choose from ``LSTM``, ``GRU`` and ``CONV``
+    :ivar SEASONALITY_PERIOD: The period of the seasonal component. Default is 168 i.e. 1 week.
+    :type SEASONALITY_PERIOD: int
+
+    :ivar INPUT_WIDTH_FACTOR: The factor to scale the input width by to ensure the whole seasonality period is encompassed.
+    :type INPUT_WIDTH_FACTOR: float
+
+    :ivar MODEL_BUILDER: The model builder to use. Choose from ``LSTM`` or ``GRU``
     :type MODEL_BUILDER: str
 
     :ivar UNIT_MIN_VALUE: The minimum Value for units.
@@ -280,23 +286,17 @@ class ModelConfig:
     :ivar UNIT_MAX_VALUE: The maximum Value for units.
     :type UNIT_MAX_VALUE: int
 
-    :ivar UNIT_MAX_VALUE_CONV: The maximum Value for units when a convolutional layer is used.
-    :type UNIT_MAX_VALUE_CONV: int
-
     :ivar UNIT_STEP: The amount to increment unit during hyperparameter search.
     :type UNIT_STEP: int
 
-    :ivar KERNEL_SIZE_MIN_VALUE: The minimum value for the kernel size. This only applies for convolutional layers.
-    :type KERNEL_SIZE_MIN_VALUE: int
+    :ivar LR_MIN_VALUE: The minimum value for the learning rate for the optimizer.
+    :type LR_MIN_VALUE: float
 
-    :ivar KERNEL_SIZE_MAX_VALUE: The maximum value for the kernel size. This only applies for convolutional layers.
-    :type KERNEL_SIZE_MAX_VALUE: int
+    :ivar LR_MAX_VALUE: The maximum value for the learning rate for the optimizer.
+    :type LR_MAX_VALUE: float
 
-    :ivar KERNEL_SIZE_STEP: The amount to increment kernel size during hyperparameter search.
-    :type KERNEL_SIZE_STEP: int
-
-    :ivar LEARNING_RATE: The learning rate for the optimizer.
-    :type LEARNING_RATE: list[float]
+    :ivar LR_STEP: The amount to increment learning rate during hyperparameter search.
+    :type LR_STEP: float
 
     :ivar DROPOUT_RATE_MIN_VALUE: The minimum value for the dropout rate. This only applies if dropout is used.
     :type DROPOUT_RATE_MIN_VALUE: float
@@ -307,8 +307,8 @@ class ModelConfig:
     :ivar DROPOUT_RATE_STEP: The amount to increment dropout rate during hyperparameter search.
     :type DROPOUT_RATE_STEP: float
 
-    :ivar USE_DROPOUT: Whether to use dropout when building the model.
-    :type USE_DROPOUT: bool
+    :ivar USE_HIDDEN_LAYERS: Whether to use hidden layers in the model.
+    :type USE_HIDDEN_LAYERS: bool
 
     :ivar NUM_LAYERS_MIN: The minimum number of hidden layers in the model.
     :type NUM_LAYERS_MIN: int
@@ -330,30 +330,29 @@ class ModelConfig:
 
     MAX_EPOCHS: int = 20
     OUT_STEPS: int = 24
+    SEASONALITY_PERIOD: int = 168
+    INPUT_WIDTH_FACTOR: float = 1.25
 
     MODEL_BUILDER = "LSTM"
     NUM_FEATURES = sum([1 for feature in FeatureConfig.FEATURE_DICT.values() if feature['select'] == 1])
 
     # hp tuner params
     UNIT_MIN_VALUE: int = 32
-    UNIT_MAX_VALUE: int = 512
-    UNIT_MAX_VALUE_CONV: int = 2048
+    UNIT_MAX_VALUE: int = 128
     UNIT_STEP: int = 32
 
-    KERNEL_SIZE_MIN_VALUE: int = 1
-    KERNEL_SIZE_MAX_VALUE: int = 10
-    KERNEL_SIZE_STEP: int = 1
+    LR_MIN_VALUE: float = 0.001
+    LR_MAX_VALUE: float = 0.1
+    LR_STEP: float = 0.05
 
-    LEARNING_RATE: list[float] = [1e-2, 1e-3, 1e-4]
+    DROPOUT_RATE_MIN_VALUE: float = 0.2
+    DROPOUT_RATE_MAX_VALUE: float = 0.7
+    DROPOUT_RATE_STEP: float = 0.1
 
-    DROPOUT_RATE_MIN_VALUE: float = 0
-    DROPOUT_RATE_MAX_VALUE: float = 0.99
-    DROPOUT_RATE_STEP: float = 0.05
+    USE_HIDDEN_LAYERS: bool = True
 
-    USE_DROPOUT: bool = True
-
-    NUM_LAYERS_MIN: int = 0
-    NUM_LAYERS_MAX: int = 0
+    NUM_LAYERS_MIN: int = 1
+    NUM_LAYERS_MAX: int = 3
     NUM_LAYERS_STEP: int = 1
 
     MAX_TRIALS: int = 50
@@ -365,20 +364,20 @@ class ModelConfig:
                 f"VALIDATION_SPLIT: {self.VALIDATION_SPLIT}\n"
                 f"MAX_EPOCHS: {self.MAX_EPOCHS}\n"
                 f"OUT_STEPS: {self.OUT_STEPS}\n"
+                f"SEASONALITY_PERIOD: {self.SEASONALITY_PERIOD}\n"
+                f"INPUT_WIDTH_FACTOR: {self.INPUT_WIDTH_FACTOR}\n"
                 f"MODEL_BUILDER: {self.MODEL_BUILDER}\n"
                 f"NUM_FEATURES: {self.NUM_FEATURES}\n"
                 f"UNIT_MIN_VALUE: {self.UNIT_MIN_VALUE}\n"
                 f"UNIT_MAX_VALUE: {self.UNIT_MAX_VALUE}\n"
-                f"UNIT_MAX_VALUE_CONV: {self.UNIT_MAX_VALUE_CONV}\n"
                 f"UNIT_STEP: {self.UNIT_STEP}\n"
-                f"KERNEL_SIZE_MIN_VALUE: {self.KERNEL_SIZE_MIN_VALUE}\n"
-                f"KERNEL_SIZE_MAX_VALUE: {self.KERNEL_SIZE_MAX_VALUE}\n"
-                f"KERNEL_SIZE_STEP: {self.KERNEL_SIZE_STEP}\n"
-                f"LEARNING_RATE: {self.LEARNING_RATE}\n"
+                f"LR_MIN_VALUE: {self.LR_MIN_VALUE}\n"
+                f"LR_MAX_VALUE: {self.LR_MAX_VALUE}\n"
+                f"LR_STEP: {self.LR_STEP}\n"
                 f"DROPOUT_RATE_MIN_VALUE: {self.DROPOUT_RATE_MIN_VALUE}\n"
                 f"DROPOUT_RATE_MAX_VALUE: {self.DROPOUT_RATE_MAX_VALUE}\n"
                 f"DROPOUT_RATE_STEP: {self.DROPOUT_RATE_STEP}\n"
-                f"USE_DROPOUT: {self.USE_DROPOUT}\n"
+                f"USE_HIDDEN_LAYERS: {self.USE_HIDDEN_LAYERS}\n"
                 f"NUM_LAYERS_MIN: {self.NUM_LAYERS_MIN}\n"
                 f"NUM_LAYERS_MAX: {self.NUM_LAYERS_MAX}\n"
                 f"NUM_LAYERS_STEP: {self.NUM_LAYERS_STEP}\n"
