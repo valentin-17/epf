@@ -1,3 +1,4 @@
+import pickle
 from datetime import datetime, timedelta
 
 import keras
@@ -333,6 +334,17 @@ class WindowGenerator():
         return result
 
     def plot(self, model=None, plot_col='de_prices_hat_rm_seasonal', max_subplots=3):
+        """Plot the `inputs`, `labels`, and `predictions` for a given model.
+
+        :param model: The model to use for predictions.
+        :type model: keras.Sequential
+
+        :param plot_col: The column to plot.
+        :type plot_col: str
+
+        :param max_subplots: The maximum number of subplots to show.
+        :type  max_subplots: int
+        """
         inputs, labels = self.example
 
         sns.set_style("ticks")
@@ -340,13 +352,13 @@ class WindowGenerator():
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
         max_n = min(max_subplots, len(inputs))
-        pc = plot_col.replace('_hat_rm_seasonal', '').replace('_', ' ').capitalize()
+        pc = plot_col.replace('_hat_rm_seasonal', '').replace('de_prices', 'DE prices')
 
         for n in range(max_n):
             plt.subplot(max_n, 1, n + 1)
             plt.plot(self.input_indices, inputs[n, :, plot_col_index],
                      label='Inputs', c='#840853')
-            plt.ylabel(f'{pc} deseasonalized and normalized')
+            plt.ylabel(f'{pc}\n(normed and deseasonalized)')
 
             if self.label_columns:
                 label_col_index = self.label_columns_indices.get(plot_col, None)
@@ -364,7 +376,7 @@ class WindowGenerator():
                             marker='x', label='Predictions',
                             c='#3a609c', s=10)
 
-            plt.xticks([0, 12, 24, 36, 48])
+            plt.xticks(np.arange(0, self.total_window_size, 24))
 
             if n == 0:
                 plt.legend()

@@ -125,44 +125,44 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_prices_hat_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'CH Prices',
             'is-numerical': True
         },
         'dk1_prices_hat_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'DK1 Prices',
             'is-numerical': True
         },
         'dk2_prices_hat_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'DK2 Prices',
             'is-numerical': True
         },
         'fr_prices_hat_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'FR Prices',
             'is-numerical': True
         },
         # price lags
         # only set lags to select = 1 if generate_lags is set to True, otherwise produces error
         'de_lu_price_7_day_lag': {
-            'select': 1,
+            'select': 0,
             'name': 'DE-LU Prices 7-Day Lag',
             'is-numerical': True
         },
         'de_lu_price_1_day_lag': {
-            'select': 1,
+            'select': 0,
             'name': 'DE-LU Prices 24-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_12_hour_lag': {
-            'select': 1,
+            'select': 0,
             'name': 'DE-LU Prices 12-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_1_hour_lag': {
-            'select': 1,
+            'select': 0,
             'name': 'DE-LU Prices 1-Hour Lag',
             'is-numerical': True
         },
@@ -183,17 +183,17 @@ class FeatureConfig:
             'is-numerical': True
         },
         'de_gas_gen_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'DE Gas Generation',
             'is-numerical': True
         },
         'de_lignite_gen_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'DE Lignite Generation',
             'is-numerical': True
         },
         'de_hard_coal_gen_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'DE Hard Coal Generation',
             'is-numerical': True
         },
@@ -250,7 +250,8 @@ class FeatureConfig:
     GENERATE_DUMMIES: bool = True
 
     def __str__(self):
-        return (f"WINDOW_LENGTH: {self.WINDOW_LENGTH}\n"
+        return (f"Selected features: \n{[feature['name'] for feature in self.FEATURE_DICT.values() if feature['select'] == 1]}\n"
+                f"WINDOW_LENGTH: {self.WINDOW_LENGTH}\n"
                 f"N_SIGMA: {self.N_SIGMA}\n"
                 f"METHOD: {self.METHOD}\n")
 
@@ -280,6 +281,9 @@ class ModelConfig:
     :ivar MODEL_BUILDER: The model builder to use. Choose from ``LSTM`` or ``GRU``
     :type MODEL_BUILDER: str
 
+    :ivar USE_HIDDEN_LAYERS: Whether to use hidden layers in the model.
+    :type USE_HIDDEN_LAYERS: bool
+
     :ivar UNIT_MIN_VALUE: The minimum Value for units.
     :type UNIT_MIN_VALUE: int
 
@@ -307,9 +311,6 @@ class ModelConfig:
     :ivar DROPOUT_RATE_STEP: The amount to increment dropout rate during hyperparameter search.
     :type DROPOUT_RATE_STEP: float
 
-    :ivar USE_HIDDEN_LAYERS: Whether to use hidden layers in the model.
-    :type USE_HIDDEN_LAYERS: bool
-
     :ivar NUM_LAYERS_MIN: The minimum number of hidden layers in the model.
     :type NUM_LAYERS_MIN: int
 
@@ -330,26 +331,25 @@ class ModelConfig:
 
     MAX_EPOCHS: int = 20
     OUT_STEPS: int = 24
-    SEASONALITY_PERIOD: int = 168
+    SEASONALITY_PERIOD: int = 24
     INPUT_WIDTH_FACTOR: float = 1.25
 
     MODEL_BUILDER = "LSTM"
+    USE_HIDDEN_LAYERS: bool = True
     NUM_FEATURES = sum([1 for feature in FeatureConfig.FEATURE_DICT.values() if feature['select'] == 1])
 
-    # hp tuner params
+    # hp tuner params roughly 6000 parameters in search space
     UNIT_MIN_VALUE: int = 32
     UNIT_MAX_VALUE: int = 128
     UNIT_STEP: int = 32
 
     LR_MIN_VALUE: float = 0.001
     LR_MAX_VALUE: float = 0.1
-    LR_STEP: float = 0.05
+    LR_STEP: float = 0.001
 
     DROPOUT_RATE_MIN_VALUE: float = 0.2
     DROPOUT_RATE_MAX_VALUE: float = 0.7
     DROPOUT_RATE_STEP: float = 0.1
-
-    USE_HIDDEN_LAYERS: bool = True
 
     NUM_LAYERS_MIN: int = 1
     NUM_LAYERS_MAX: int = 3
@@ -367,6 +367,7 @@ class ModelConfig:
                 f"SEASONALITY_PERIOD: {self.SEASONALITY_PERIOD}\n"
                 f"INPUT_WIDTH_FACTOR: {self.INPUT_WIDTH_FACTOR}\n"
                 f"MODEL_BUILDER: {self.MODEL_BUILDER}\n"
+                f"USE_HIDDEN_LAYERS: {self.USE_HIDDEN_LAYERS}\n"
                 f"NUM_FEATURES: {self.NUM_FEATURES}\n"
                 f"UNIT_MIN_VALUE: {self.UNIT_MIN_VALUE}\n"
                 f"UNIT_MAX_VALUE: {self.UNIT_MAX_VALUE}\n"
@@ -377,7 +378,6 @@ class ModelConfig:
                 f"DROPOUT_RATE_MIN_VALUE: {self.DROPOUT_RATE_MIN_VALUE}\n"
                 f"DROPOUT_RATE_MAX_VALUE: {self.DROPOUT_RATE_MAX_VALUE}\n"
                 f"DROPOUT_RATE_STEP: {self.DROPOUT_RATE_STEP}\n"
-                f"USE_HIDDEN_LAYERS: {self.USE_HIDDEN_LAYERS}\n"
                 f"NUM_LAYERS_MIN: {self.NUM_LAYERS_MIN}\n"
                 f"NUM_LAYERS_MAX: {self.NUM_LAYERS_MAX}\n"
                 f"NUM_LAYERS_STEP: {self.NUM_LAYERS_STEP}\n"
