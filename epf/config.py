@@ -204,12 +204,12 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_load_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'CH Load',
             'is-numerical': True
         },
         'dk_load_rm_seasonal': {
-            'select': 1,
+            'select': 0,
             'name': 'DK Load',
             'is-numerical': True
         },

@@ -372,7 +372,8 @@ class EpfPipeline(object):
                 'window': None,
                 'train_df': None,
                 'validation_df': None,
-                'test_df': None
+                'test_df': None,
+                'timings': None,
             }
 
         # check if training data is already prepared, if not fallback to preparing the data.
@@ -435,6 +436,11 @@ class EpfPipeline(object):
 
         LOG.success(f"Successfully trained {model_name}. Now saving...")
 
+        end = timer()
+        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
+        self.timings.update({'training': t_elapsed})
+        LOG.info(f"Training took {t_elapsed}.")
+
         # save trained model to disk
         if not overwrite and model_out_path.exists():
             FileExistsError(
@@ -453,15 +459,11 @@ class EpfPipeline(object):
                 'train_df': self.train_df,
                 'validation_df': self.validation_df,
                 'test_df': self.test_df,
+                'timings': self.timings,
             })
             with open(model_out_path, 'wb') as f:
                 pkl.dump(model_obj, f, -1)
             LOG.success(f"Successfully saved {model_name} to {model_out_path.as_posix()}")
-
-        end = timer()
-        t_elapsed = strftime('%Hh:%Mm:%Ss', time.gmtime(end - start))
-        self.timings.update({'training': t_elapsed})
-        LOG.info(f"Training took {t_elapsed}.")
 
     def evaluate(self, model_name: str):
         """
