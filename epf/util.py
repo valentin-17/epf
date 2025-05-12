@@ -271,33 +271,52 @@ class WindowGenerator():
             f'Label indices: {self.label_indices}',
             f'Label column name(s): {self.label_columns}'])
 
-    def split_window(self, features):
+    def split_window(self, features, timestamps):
+        # Slice inputs and labels
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
+
+        # Optionally filter label columns
         if self.label_columns is not None:
             labels = tf.stack(
                 [labels[:, :, self.column_indices[name]] for name in self.label_columns],
-                axis=-1)
+                axis=-1
+            )
 
-        # Slicing doesn't preserve static shape information, so set the shapes
-        # manually. This way the `tf.data.Datasets` are easier to inspect
+        # Slice timestamps for the label window
+        label_times = timestamps[:, self.labels_slice]  # shape [batch, label_width]
+
+        # Set static shapes
         inputs.set_shape([None, self.input_width, None])
         labels.set_shape([None, self.label_width, None])
+        label_times.set_shape([None, self.label_width])
 
-        return inputs, labels
+        return (inputs, labels), label_times
 
-    def make_dataset(self, data):
-        # extract timestamp
+    def make_dataset(self, df):
+        # Convert timestamps to strings (ISO format)
+        timestamps = df.index.astype(str).to_numpy()
+        data = np.array(df, dtype=np.float32)
 
-        data = np.array(data, dtype=np.float32)
-        ds = keras.utils.timeseries_dataset_from_array(
+        ds_x = keras.utils.timeseries_dataset_from_array(
             data=data,
             targets=None,
             sequence_length=self.total_window_size,
             sequence_stride=1,
-            shuffle=True,
-            batch_size=32, )
+            shuffle=False,
+            batch_size=32,
+        )
 
+        ds_t = keras.utils.timeseries_dataset_from_array(
+            data=timestamps,
+            targets=None,
+            sequence_length=self.total_window_size,
+            sequence_stride=1,
+            shuffle=False,
+            batch_size=32,
+        )
+
+        ds = tf.data.Dataset.zip((ds_x, ds_t))
         ds = ds.map(self.split_window)
 
         return ds
