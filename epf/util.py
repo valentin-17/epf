@@ -1,5 +1,5 @@
 import pickle
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import keras
 import re
@@ -233,6 +233,47 @@ def builder(hp):
 
     return model
 
+def predict_with_timestamps(model, dataset, label_columns):
+    """Predicts on a ((x, y), timestamps) dataset and returns a pandas DataFrame with flattened predictions and their corresponding timestamps.
+
+    :param model: Trained model
+    :type model: tf.keras.Sequential
+
+    :param dataset: Dataset yielding ((inputs, labels), timestamps)
+    :type dataset: tf.data.Dataset
+
+    :param label_columns: Names of label columns (for DataFrame headers)
+    :type label_columns: list[str]
+
+    :returns pd.DataFrame: DataFrame with columns ['timestamp'] + label_columns
+    """
+    all_preds = []
+    all_times = []
+
+    for (x_batch, y_batch), ts_batch in dataset:
+        preds = model.predict(x_batch, verbose=0)
+        all_preds.append(preds)
+        all_times.append(ts_batch.numpy())
+
+    flat_preds = np.concatenate(all_preds, axis=0)       # shape: [n, out_steps, features]
+    flat_times = np.concatenate(all_times, axis=0)       # shape: [n, out_steps]
+
+    print(flat_preds.shape)
+    print(label_columns)
+
+    n, out_steps, features = flat_preds.shape
+
+    # Reshape for DataFrame
+    flat_preds = flat_preds.reshape(-1, features)        # [n*out_steps, features]
+    flat_times = flat_times.reshape(-1)                  # [n*out_steps]
+
+    flat_times = pd.to_datetime(flat_times, unit='s')
+
+    df = pd.DataFrame(flat_preds, columns=label_columns)
+    df.insert(0, "timestamp", flat_times)
+
+    return df
+
 
 # code taken from [3] /references/refs.md
 class WindowGenerator():
@@ -274,18 +315,15 @@ class WindowGenerator():
     def split_window(self, features, timestamps=None):
         """Either returns (inputs, labels) or ((inputs, labels), timestamps) depending on the value of ``timestamps``.
         ((inputs, labels), timestamps) is really only used for plotting and evaluation."""
-        # Slice inputs and labels
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
-
-        # Optionally filter label columns
         if self.label_columns is not None:
             labels = tf.stack(
                 [labels[:, :, self.column_indices[name]] for name in self.label_columns],
-                axis=-1
-            )
+                axis=-1)
 
-        # Set static shapes
+        # Slicing doesn't preserve static shape information, so set the shapes
+        # manually. This way the `tf.data.Datasets` are easier to inspect.
         inputs.set_shape([None, self.input_width, None])
         labels.set_shape([None, self.label_width, None])
 
@@ -300,7 +338,7 @@ class WindowGenerator():
         """Creates a dataset from the given DataFrame. If return_timestamps is True, the dataset will include timestamps."""
         data = np.array(df, dtype=np.float32)
 
-        ds_x = keras.utils.timeseries_dataset_from_array(
+        ds = keras.utils.timeseries_dataset_from_array(
             data=data,
             targets=None,
             sequence_length=self.total_window_size,
@@ -310,7 +348,8 @@ class WindowGenerator():
         )
 
         if return_timestamps:
-            timestamps = df.index.astype(str).to_numpy()
+            # see https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#from-timestamps-to-epoch
+            timestamps = (df.index - pd.Timestamp("1970-01-01", tz=timezone.utc)) // pd.Timedelta("1s")
 
             ds_t = keras.utils.timeseries_dataset_from_array(
                 data=timestamps,
@@ -322,9 +361,7 @@ class WindowGenerator():
             )
 
             # Return ((inputs, labels), timestamps)
-            ds = tf.data.Dataset.zip((ds_x, ds_t))
-        else:
-            ds = ds_x
+            ds = tf.data.Dataset.zip((ds, ds_t))
 
         # Default: return (inputs, labels)
         ds = ds.map(self.split_window)
@@ -345,7 +382,6 @@ class WindowGenerator():
 
     @property
     def test_ts(self):
-        """Get the test dataset with timestamps."""
         return self.make_dataset(self.test_df, return_timestamps=True)
 
     @property
@@ -363,23 +399,21 @@ class WindowGenerator():
     def get_test_subset(self, start_time, end_time):
         """
         Returns a subset of the test_ts dataset where the label timestamps fall within the given start_time and end_time (inclusive start, exclusive end).
+        Accepts any datetime format that can be parsed by ``pandas.to_datetime``. Has to be tz_aware.
 
         :param start_time: Start of time window
-        :type start_time: np.datetime64 | str
-
         :param end_time: End of time window
-        :type end_time: np.datetime64 | str
 
         :returns tf.data.Dataset: Filtered dataset of ((inputs, labels), timestamps)
         """
-        start_time = np.datetime64(start_time)
-        end_time = np.datetime64(end_time)
+        start_unix = (pd.to_datetime(start_time) - pd.Timestamp("1970-01-01", tz=timezone.utc)) // pd.Timedelta("1s")
+        end_unix = (pd.to_datetime(end_time) - pd.Timestamp("1970-01-01", tz=timezone.utc)) // pd.Timedelta("1s")
 
         full_ds = self.test_ts
 
         def filter_fn(xy, ts):
             # only keep batch if all timesteps are it is in range
-            in_range = tf.logical_and(ts >= start_time, ts < end_time)
+            in_range = tf.logical_and(ts >= start_unix, ts < end_unix)
             return tf.reduce_all(in_range)
 
         return full_ds.filter(filter_fn)
