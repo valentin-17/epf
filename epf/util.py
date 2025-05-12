@@ -172,7 +172,7 @@ def builder(hp):
 
     out_steps = mc.OUT_STEPS
     model_builder = mc.MODEL_BUILDER
-    num_features = mc.NUM_FEATURES
+    label_col = mc.LABEL_COL
 
     model = keras.Sequential()
 
@@ -185,25 +185,18 @@ def builder(hp):
 
     # differentiate between the input layers whether to use lstm or gru
     if model_builder == "LSTM":
-        model.add(keras.layers.LSTM(hp.Int(name='units',
-                                           min_value=u_min,
-                                           max_value=u_max,
-                                           step=u_step), return_sequences=rs))
+        model.add(keras.layers.LSTM(units=hp.Int(name='units', min_value=u_min, max_value=u_max, step=u_step),
+                                    recurrent_dropout=hp.Float(name='rec_dropout', min_value=dr_min, max_value=dr_max,
+                                                               step=dr_step),
+                                    return_sequences=rs))
 
     if model_builder == "GRU":
-        model.add(keras.layers.GRU(hp.Int(name='units',
-                                          min_value=u_min,
-                                          max_value=u_max,
-                                          step=u_step), return_sequences=rs))
+        model.add(keras.layers.GRU(units=hp.Int(name='units', min_value=u_min, max_value=u_max, step=u_step),
+                                   recurrent_dropout=hp.Float(name='rec_dropout', min_value=dr_min, max_value=dr_max,
+                                                              step=dr_step),
+                                   return_sequences=rs))
 
-    # after the initial layer, model building is identical
-    model.add(keras.layers.Dropout(rate=hp.Float(name='dropout',
-                                                 min_value=dr_min,
-                                                 max_value=dr_max,
-                                                 step=dr_step)))
-
-    # add hidden layers and dropout layers, if hidden layers is True
-    # effectively making this a rnn stacked approach with either lstm or gru layers
+    # add hidden layers, if hidden layers is True effectively making this a rnn stacked approach with either lstm or gru layers
     if hidden_layers:
         for i in range(0, nl):
             # set the return sequences to true for all intermediary layers
@@ -211,26 +204,23 @@ def builder(hp):
             rs = hidden_layers if i < nl - 1 else False
 
             if model_builder == "LSTM":
-                model.add(keras.layers.LSTM(units=hp.Int(name='units_' + str(i),
-                                                         min_value=u_min,
-                                                         max_value=u_max,
-                                                         step=u_step), return_sequences=rs))
+                model.add(keras.layers.LSTM(units=hp.Int(name='units_' + str(i), min_value=u_min, max_value=u_max,
+                                                         step=u_step),
+                                            recurrent_dropout=hp.Float(name='rec_dropout_' + str(i), min_value=dr_min,
+                                                                       max_value=dr_max, step=dr_step),
+                                            return_sequences=rs))
             if model_builder == "GRU":
-                model.add(keras.layers.GRU(units=hp.Int(name='units_' + str(i),
-                                                        min_value=u_min,
-                                                        max_value=u_max,
-                                                        step=u_step), return_sequences=rs))
+                model.add(keras.layers.GRU(units=hp.Int(name='units_' + str(i), min_value=u_min, max_value=u_max,
+                                                        step=u_step),
+                                           recurrent_dropout=hp.Float(name='rec_dropout_' + str(i), min_value=dr_min,
+                                                                      max_value=dr_max, step=dr_step),
+                                           return_sequences=rs))
 
-            model.add(keras.layers.Dropout(rate=hp.Float(name='dropout_' + str(i),
-                                                         min_value=dr_min,
-                                                         max_value=dr_max,
-                                                         step=dr_step)))
-
-    # introduce dense layer with out_steps * num_features to implement single shot forecasting, needs to be reshaped
-    # to [out_steps, num_features] afterward.
-    model.add(keras.layers.Dense(out_steps * num_features,
+    # introduce dense layer with out_steps * len(label_col) to implement single shot forecasting, needs to be reshaped
+    # to [out_steps, len(label_col)] afterward. multiply by one since we only want to forecast one single feature, the price
+    model.add(keras.layers.Dense(out_steps * len(label_col),
                                  kernel_initializer=keras.initializers.zeros()))
-    model.add(keras.layers.Reshape([out_steps, num_features]))
+    model.add(keras.layers.Reshape([out_steps, len(label_col)]))
 
     # compile the model
     model.compile(loss=keras.losses.MeanAbsoluteError(),
@@ -297,6 +287,8 @@ class WindowGenerator():
         return inputs, labels
 
     def make_dataset(self, data):
+        # extract timestamp
+
         data = np.array(data, dtype=np.float32)
         ds = keras.utils.timeseries_dataset_from_array(
             data=data,

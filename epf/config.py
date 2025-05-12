@@ -125,44 +125,44 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'CH Prices',
             'is-numerical': True
         },
         'dk1_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK1 Prices',
             'is-numerical': True
         },
         'dk2_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK2 Prices',
             'is-numerical': True
         },
         'fr_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'FR Prices',
             'is-numerical': True
         },
         # price lags
         # only set lags to select = 1 if generate_lags is set to True, otherwise produces error
         'de_lu_price_7_day_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 7-Day Lag',
             'is-numerical': True
         },
         'de_lu_price_1_day_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 24-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_12_hour_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 12-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_1_hour_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 1-Hour Lag',
             'is-numerical': True
         },
@@ -183,17 +183,17 @@ class FeatureConfig:
             'is-numerical': True
         },
         'de_gas_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Gas Generation',
             'is-numerical': True
         },
         'de_lignite_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Lignite Generation',
             'is-numerical': True
         },
         'de_hard_coal_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Hard Coal Generation',
             'is-numerical': True
         },
@@ -204,17 +204,17 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_load_rm_seasonal': {
-            'select': 0,
+            'select': 0, # permanently excluded from feature set
             'name': 'CH Load',
             'is-numerical': True
         },
         'dk_load_rm_seasonal': {
-            'select': 0,
+            'select': 0, # permanently excluded from feature set
             'name': 'DK Load',
             'is-numerical': True
         },
         'fr_load_rm_seasonal': {
-            'select': 1,
+            'select': 0, # permanently excluded from feature set
             'name': 'FR Load',
             'is-numerical': True
         },
@@ -302,10 +302,10 @@ class ModelConfig:
     :ivar LR_STEP: The amount to increment learning rate during hyperparameter search.
     :type LR_STEP: float
 
-    :ivar DROPOUT_RATE_MIN_VALUE: The minimum value for the dropout rate. This only applies if dropout is used.
+    :ivar DROPOUT_RATE_MIN_VALUE: The minimum value for the dropout rate.
     :type DROPOUT_RATE_MIN_VALUE: float
 
-    :ivar DROPOUT_RATE_MAX_VALUE: The maximum value for the dropout rate. This only applies if dropout is used.
+    :ivar DROPOUT_RATE_MAX_VALUE: The maximum value for the dropout rate.
     :type DROPOUT_RATE_MAX_VALUE: float
 
     :ivar DROPOUT_RATE_STEP: The amount to increment dropout rate during hyperparameter search.
@@ -329,7 +329,7 @@ class ModelConfig:
     TRAIN_SPLIT: float | datetime = datetime(2023, 9, 30, 22, tzinfo = timezone.utc)
     VALIDATION_SPLIT: float | datetime = datetime(2023, 12, 31, 22, tzinfo = timezone.utc)
 
-    MAX_EPOCHS: int = 20
+    MAX_EPOCHS: int = 100
     OUT_STEPS: int = 24
     SEASONALITY_PERIOD: int = 24
     INPUT_WIDTH_FACTOR: float = 1.25
