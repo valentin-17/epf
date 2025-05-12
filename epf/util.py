@@ -271,7 +271,9 @@ class WindowGenerator():
             f'Label indices: {self.label_indices}',
             f'Label column name(s): {self.label_columns}'])
 
-    def split_window(self, features, timestamps):
+    def split_window(self, features, timestamps=None):
+        """Either returns (inputs, labels) or ((inputs, labels), timestamps) depending on the value of ``timestamps``.
+        ((inputs, labels), timestamps) is really only used for plotting and evaluation."""
         # Slice inputs and labels
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
@@ -283,19 +285,19 @@ class WindowGenerator():
                 axis=-1
             )
 
-        # Slice timestamps for the label window
-        label_times = timestamps[:, self.labels_slice]  # shape [batch, label_width]
-
         # Set static shapes
         inputs.set_shape([None, self.input_width, None])
         labels.set_shape([None, self.label_width, None])
-        label_times.set_shape([None, self.label_width])
 
-        return (inputs, labels), label_times
+        if timestamps is not None:
+            label_times = timestamps[:, self.labels_slice]  # shape [batch, label_width]
+            label_times.set_shape([None, self.label_width])
+            return (inputs, labels), label_times
 
-    def make_dataset(self, df):
-        # Convert timestamps to strings (ISO format)
-        timestamps = df.index.astype(str).to_numpy()
+        return inputs, labels
+
+    def make_dataset(self, df, return_timestamps=False):
+        """Creates a dataset from the given DataFrame. If return_timestamps is True, the dataset will include timestamps."""
         data = np.array(df, dtype=np.float32)
 
         ds_x = keras.utils.timeseries_dataset_from_array(
@@ -307,16 +309,24 @@ class WindowGenerator():
             batch_size=32,
         )
 
-        ds_t = keras.utils.timeseries_dataset_from_array(
-            data=timestamps,
-            targets=None,
-            sequence_length=self.total_window_size,
-            sequence_stride=1,
-            shuffle=False,
-            batch_size=32,
-        )
+        if return_timestamps:
+            timestamps = df.index.astype(str).to_numpy()
 
-        ds = tf.data.Dataset.zip((ds_x, ds_t))
+            ds_t = keras.utils.timeseries_dataset_from_array(
+                data=timestamps,
+                targets=None,
+                sequence_length=self.total_window_size,
+                sequence_stride=1,
+                shuffle=False,
+                batch_size=32,
+            )
+
+            # Return ((inputs, labels), timestamps)
+            ds = tf.data.Dataset.zip((ds_x, ds_t))
+        else:
+            ds = ds_x
+
+        # Default: return (inputs, labels)
         ds = ds.map(self.split_window)
 
         return ds
@@ -334,6 +344,11 @@ class WindowGenerator():
         return self.make_dataset(self.test_df)
 
     @property
+    def test_ts(self):
+        """Get the test dataset with timestamps."""
+        return self.make_dataset(self.test_df, return_timestamps=True)
+
+    @property
     def example(self):
         """Get and cache an example batch of `inputs, labels` for plotting."""
         result = getattr(self, '_example', None)
@@ -343,6 +358,31 @@ class WindowGenerator():
             # And cache it for next time
             self._example = result
         return result
+
+    #TODO: needs testing
+    def get_test_subset(self, start_time, end_time):
+        """
+        Returns a subset of the test_ts dataset where the label timestamps fall within the given start_time and end_time (inclusive start, exclusive end).
+
+        :param start_time: Start of time window
+        :type start_time: np.datetime64 | str
+
+        :param end_time: End of time window
+        :type end_time: np.datetime64 | str
+
+        :returns tf.data.Dataset: Filtered dataset of ((inputs, labels), timestamps)
+        """
+        start_time = np.datetime64(start_time)
+        end_time = np.datetime64(end_time)
+
+        full_ds = self.test_ts
+
+        def filter_fn(xy, ts):
+            # only keep batch if all timesteps are it is in range
+            in_range = tf.logical_and(ts >= start_time, ts < end_time)
+            return tf.reduce_all(in_range)
+
+        return full_ds.filter(filter_fn)
 
     def plot(self, model=None, plot_col='de_prices_hat_rm_seasonal', max_subplots=3):
         """Plot the `inputs`, `labels`, and `predictions` for a given model.
