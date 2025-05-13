@@ -316,7 +316,7 @@ class EpfPipeline(object):
         self.timings.update({'hp_tuning': t_elapsed})
         LOG.info(f"Hyperparameter tuning took {t_elapsed}.")
 
-    def train(self, model_name: str, overwrite: bool, prep_data: bool = True, use_tuned_hyperparams: bool = False):
+    def train(self, model_name: str, overwrite: bool):
         """
         Trains a model on the training data that is currently saved on the disk. The model configuration provides
         necessary tuning and training parameters. When ``prep_data`` = ``True``, the data preparation pipeline is called
@@ -327,13 +327,6 @@ class EpfPipeline(object):
 
         :param overwrite: Whether to overwrite an existing model or not.
         :type overwrite: bool
-
-        :param prep_data: Whether to prepare the data or not. If set to False, preprocessed data is loaded from disk.
-            If set to True already existing Data is overwritten.
-        :type prep_data: bool
-
-        :param use_tuned_hyperparams: Whether to use already tuned hyperparameters from disk or tune them again for this training loop.
-        :type use_tuned_hyperparams: bool
         """
         start = timer()
         tuner_dir = MODELS_DIR / "tuner"
@@ -356,38 +349,22 @@ class EpfPipeline(object):
                  f"Tuned model path: {tuned_model_path.as_posix()}.\n"
                  f"Tuned Hyperparameters path: {tuned_hyperparams_path.as_posix()}.\n")
 
-        # load the model obj that stores all relevant data for training, if no model obj exists then create a new one
-        if model_out_path.exists():
-            with open(model_out_path, 'rb') as f:
-                model_obj = pkl.load(f)
-        else:
-            model_obj = {
-                'model_name': model_name,
-                'best_model': None,
-                'best_hps': None,
-                'history': None,
-                'train_mean': None,
-                'train_std': None,
-                'seasonal': None,
-                'window': None,
-                'train_df': None,
-                'validation_df': None,
-                'test_df': None,
-                'timings': None,
-            }
+        model_obj = {
+            'model_name': model_name,
+            'best_model': None,
+            'best_hps': None,
+            'history': None,
+            'train_mean': None,
+            'train_std': None,
+            'seasonal': None,
+            'window': None,
+            'train_df': None,
+            'validation_df': None,
+            'test_df': None,
+            'timings': None,
+        }
 
-        # check if training data is already prepared, if not fallback to preparing the data.
-        # Otherwise, data from disk is loaded
-        if prep_data:
-            LOG.info("Preparing training data.")
-            self._prep_data()
-            LOG.success(f"Successfully prepared training data for {model_name}")
-
-        elif not prep_data:
-            LOG.info("Now loading training data from disk.")
-            feature_path = PROCESSED_DATA_DIR / "features.csv"
-            self._generate_training_data(feature_path)
-            LOG.success(f"Successfully loaded training data for {model_name}")
+        self._prep_data()
 
         # generate windows
         window = WindowGenerator(train_df=self.train_df,
@@ -400,28 +377,16 @@ class EpfPipeline(object):
 
         self.window = window
 
-        # tune hyperparams, skip hyperparameter tuning if use_tuned_hyperparams is set to True
-        if use_tuned_hyperparams and (model_obj['best_hps'] is not None and model_obj['best_model'] is not None):
-            LOG.info(f"Skipping hyperparameter tuning and loading tuned hyperparameters for {model_name} "
-                     f"from {model_out_path.as_posix()}.")
-            self.best_model = model_obj['best_model']
-            self.best_hps = model_obj['best_hps']
-        elif (not use_tuned_hyperparams) or (
-                use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists())):
-            if use_tuned_hyperparams and not (tuned_model_path.exists() and tuned_hyperparams_path.exists()):
-                LOG.warning("No tuned hyperparameters and model found at paths "
-                            f"{tuned_model_path.as_posix()} and {tuned_hyperparams_path.as_posix()} for {model_name}. "
-                            "Defaulting to fresh Hyperparameter tuning.")
-            LOG.info(f"Now tuning hyperparameters for {model_name}. This might take a while...")
-            # note that tune_hyperparameters automatically sets the properties best_model and best_hps to be used
-            # further down the line
-            self._tune_hyperparameters(window=window,
-                                       max_epochs=max_epochs,
-                                       model_name=model_name,
-                                       tuner_dir=tuner_dir,
-                                       tuned_model_path=tuned_model_path,
-                                       tuned_hyperparams_path=tuned_hyperparams_path)
-            LOG.success(f"Successfully tuned hyperparameters for {model_name}")
+        LOG.info(f"Now tuning hyperparameters for {model_name}. This might take a while...")
+        # note that tune_hyperparameters automatically sets the properties best_model and best_hps to be used
+        # further down the line
+        self._tune_hyperparameters(window=window,
+                                   max_epochs=max_epochs,
+                                   model_name=model_name,
+                                   tuner_dir=tuner_dir,
+                                   tuned_model_path=tuned_model_path,
+                                   tuned_hyperparams_path=tuned_hyperparams_path)
+        LOG.success(f"Successfully tuned hyperparameters for {model_name}")
 
         # run training loop with best model
         early_stopping = keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -430,6 +395,7 @@ class EpfPipeline(object):
 
         LOG.info(f"Training {model_name} on the following Features:"
                  f"{[str(feature['name']) for feature in self._fc.FEATURE_DICT.values() if feature['select'] == 1]}.")
+
         self.history = self.best_model.fit(window.train, epochs=max_epochs,
                                            validation_data=window.val,
                                            callbacks=[early_stopping])

@@ -218,9 +218,9 @@ def builder(hp):
 
     # introduce dense layer with out_steps * len(label_col) to implement single shot forecasting, needs to be reshaped
     # to [out_steps, len(label_col)] afterward. multiply by one since we only want to forecast one single feature, the price
-    model.add(keras.layers.Dense(out_steps * len(label_col),
+    model.add(keras.layers.Dense(out_steps * len([label_col]),
                                  kernel_initializer=keras.initializers.zeros()))
-    model.add(keras.layers.Reshape([out_steps, len(label_col)]))
+    model.add(keras.layers.Reshape([out_steps, len([label_col])]))
 
     # compile the model
     model.compile(loss=keras.losses.MeanAbsoluteError(),
@@ -248,31 +248,39 @@ def predict_with_timestamps(model, dataset, label_columns):
     :returns pd.DataFrame: DataFrame with columns ['timestamp'] + label_columns
     """
     all_preds = []
+    all_trues = []
     all_times = []
 
     for (x_batch, y_batch), ts_batch in dataset:
         preds = model.predict(x_batch, verbose=0)
         all_preds.append(preds)
+        all_trues.append(y_batch)
         all_times.append(ts_batch.numpy())
 
-    flat_preds = np.concatenate(all_preds, axis=0)       # shape: [n, out_steps, features]
-    flat_times = np.concatenate(all_times, axis=0)       # shape: [n, out_steps]
+    all_preds  = np.concatenate(all_preds, axis=0)       # shape: [n, out_steps, features]
+    all_trues  = np.concatenate(all_trues, axis=0)       # shape: [n, out_steps, features]
+    all_times  = np.concatenate(all_times, axis=0)       # shape: [n, out_steps]
 
-    print(flat_preds.shape)
-    print(label_columns)
+    # shape is [n, out_steps, 1]
+    n, out_steps, features = all_preds.shape
 
-    n, out_steps, features = flat_preds.shape
-
-    # Reshape for DataFrame
-    flat_preds = flat_preds.reshape(-1, features)        # [n*out_steps, features]
-    flat_times = flat_times.reshape(-1)                  # [n*out_steps]
+    # reshape for dataFrame
+    flat_preds = all_preds.reshape(n, out_steps)  # now [n, out_steps]
+    flat_trues = all_trues.reshape(n, out_steps)  # now [n, out_steps]
+    flat_times = all_times[:, 0]  # use first time per sample
 
     flat_times = pd.to_datetime(flat_times, unit='s')
 
-    df = pd.DataFrame(flat_preds, columns=label_columns)
-    df.insert(0, "timestamp", flat_times)
+    colname = label_columns[0] if isinstance(label_columns, list) else label_columns
+    step_columns = [f"{colname}_t+{i + 1}" for i in range(out_steps)]
 
-    return df
+    pred = pd.DataFrame(flat_preds, columns=step_columns)
+    pred.insert(0, "timestamp", flat_times)
+
+    true = pd.DataFrame(flat_trues, columns=step_columns)
+    true.insert(0, "timestamp", flat_times)
+
+    return pred, true
 
 
 # code taken from [3] /references/refs.md
