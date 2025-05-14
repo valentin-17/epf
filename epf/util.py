@@ -372,7 +372,16 @@ class WindowGenerator():
             ds = tf.data.Dataset.zip((ds, ds_t))
 
         # Default: return (inputs, labels)
-        ds = ds.map(self.split_window)
+        ds = ds.map(self.split_window, num_parallel_calls=tf.data.AUTOTUNE, name='split_window')
+
+        # shuffle the dataset
+        # use recommended way by tensorflow, failsafe to not use buffer size bigger than 1000 to avoid risk of memory overflow
+        buffer_size = ds.cardinality() if (isinstance(ds.cardinality(), tf.Tensor)
+                                           and ds.cardinality() <= 1000) else tf.constant(1000, dtype=tf.int64)
+        ds = ds.shuffle(buffer_size=buffer_size, name='shuffle')
+
+        # prefetch
+        ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE, name='prefetch')
 
         return ds
 
