@@ -12,6 +12,8 @@ import pandas as pd
 from pandas import DataFrame
 from timeit import default_timer as timer
 
+from sklearn.preprocessing import MinMaxScaler
+
 from epf.config import FeatureConfig, ModelConfig, MODELS_DIR, RAW_DATA_DIR, INTERIM_DATA_DIR, PROCESSED_DATA_DIR, \
     TRAIN_DATA_DIR, LOG
 from epf.util import load_and_concat_data, remove_seasonal_component, detect_and_remove_outliers, split_data, \
@@ -78,8 +80,8 @@ class EpfPipeline(object):
         self.seasonal = None
         self.test_df = None
         self.train_df = None
-        self.train_mean = None
-        self.train_std = None
+        self.train_min = None
+        self.train_max = None
         self.validation_df = None
         self.window = None
 
@@ -228,16 +230,20 @@ class EpfPipeline(object):
         # generate training splits
         train_df, validation_df, test_df = split_data(feature_set, train_split, validation_split)
 
-        # normalize data
-        train_mean = train_df.mean()
-        train_std = train_df.std()
+        # normalize data with min max normalization
+        train_min = train_df.min()
+        train_max = train_df.max()
 
-        self.train_mean = train_mean
-        self.train_std = train_std
+        self.train_min = train_min # unused
+        self.train_max = train_max # unused
 
-        self.train_df = (train_df - train_mean) / train_std
-        self.validation_df = (validation_df - train_mean) / train_std
-        self.test_df = (test_df - train_mean) / train_std
+        self.train_df = (train_df - train_min) / (train_max - train_min)
+        self.validation_df = (validation_df - train_min) / (train_max - train_min)
+        self.test_df = (test_df - train_min) / (train_max - train_min)
+
+        #self.train_df = (train_df - train_mean) / train_std
+        #self.validation_df = (validation_df - train_mean) / train_std
+        #self.test_df = (test_df - train_mean) / train_std
 
         LOG.info(f"Finished generating training data.")
         end = timer()
@@ -354,13 +360,14 @@ class EpfPipeline(object):
             'best_model': None,
             'best_hps': None,
             'history': None,
-            'train_mean': None,
-            'train_std': None,
+            'train_min': None,
+            'train_max': None,
             'seasonal': None,
             'window': None,
             'train_df': None,
             'validation_df': None,
             'test_df': None,
+            'feature_set': None,
             'timings': None,
         }
 
@@ -418,13 +425,14 @@ class EpfPipeline(object):
                 'best_model': self.best_model,
                 'best_hps': self.best_hps,
                 'history': self.history,
-                'train_mean': self.train_mean,
-                'train_std': self.train_std,
+                'train_min': self.train_min,
+                'train_max': self.train_max,
                 'seasonal': self.seasonal,
                 'window': self.window,
                 'train_df': self.train_df,
                 'validation_df': self.validation_df,
                 'test_df': self.test_df,
+                'feature_set': self.feature_set,
                 'timings': self.timings,
             })
             with open(model_out_path, 'wb') as f:

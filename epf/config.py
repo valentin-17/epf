@@ -125,44 +125,44 @@ class FeatureConfig:
             'is-numerical': True
         },
         'ch_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'CH Prices',
             'is-numerical': True
         },
         'dk1_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK1 Prices',
             'is-numerical': True
         },
         'dk2_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DK2 Prices',
             'is-numerical': True
         },
         'fr_prices_hat_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'FR Prices',
             'is-numerical': True
         },
         # price lags
         # only set lags to select = 1 if generate_lags is set to True, otherwise produces error
         'de_lu_price_7_day_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 7-Day Lag',
             'is-numerical': True
         },
         'de_lu_price_1_day_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 24-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_12_hour_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 12-Hour Lag',
             'is-numerical': True
         },
         'de_lu_price_1_hour_lag': {
-            'select': 0,
+            'select': 1,
             'name': 'DE-LU Prices 1-Hour Lag',
             'is-numerical': True
         },
@@ -183,23 +183,23 @@ class FeatureConfig:
             'is-numerical': True
         },
         'de_gas_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Gas Generation',
             'is-numerical': True
         },
         'de_lignite_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Lignite Generation',
             'is-numerical': True
         },
         'de_hard_coal_gen_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Hard Coal Generation',
             'is-numerical': True
         },
         # loads
         'de_load_rm_seasonal': {
-            'select': 0,
+            'select': 1,
             'name': 'DE Load',
             'is-numerical': True
         },
@@ -334,7 +334,7 @@ class ModelConfig:
     SEASONALITY_PERIOD: int = 24
     INPUT_WIDTH_FACTOR: float = 1.25
 
-    MODEL_BUILDER = "LSTM"
+    MODEL_BUILDER = "GRU" # "LSTM" or "GRU"
     USE_HIDDEN_LAYERS: bool = True
     NUM_FEATURES = sum([1 for feature in FeatureConfig.FEATURE_DICT.values() if feature['select'] == 1])
 
@@ -343,13 +343,13 @@ class ModelConfig:
     UNIT_MAX_VALUE: int = 128
     UNIT_STEP: int = 32
 
-    LR_MIN_VALUE: float = 0.001
+    LR_MIN_VALUE: float = 0.0001
     LR_MAX_VALUE: float = 0.1
     LR_STEP: float = 0.001
 
     DROPOUT_RATE_MIN_VALUE: float = 0.2
     DROPOUT_RATE_MAX_VALUE: float = 0.7
-    DROPOUT_RATE_STEP: float = 0.1
+    DROPOUT_RATE_STEP: float = 0.05
 
     NUM_LAYERS_MIN: int = 1
     NUM_LAYERS_MAX: int = 3
@@ -360,8 +360,8 @@ class ModelConfig:
     LABEL_COL = 'de_prices_hat_rm_seasonal'
 
     def __str__(self):
-        return (f"TRAIN_SPLIT: {self.TRAIN_SPLIT}\n"
-                f"VALIDATION_SPLIT: {self.VALIDATION_SPLIT}\n"
+        return (f"TRAIN_SPLIT (upper bound): {self.TRAIN_SPLIT}\n"
+                f"VALIDATION_SPLIT (upper bound): {self.VALIDATION_SPLIT}\n"
                 f"MAX_EPOCHS: {self.MAX_EPOCHS}\n"
                 f"OUT_STEPS: {self.OUT_STEPS}\n"
                 f"SEASONALITY_PERIOD: {self.SEASONALITY_PERIOD}\n"

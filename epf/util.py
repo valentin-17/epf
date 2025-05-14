@@ -9,6 +9,7 @@ import seaborn as sns
 import tensorflow as tf
 from matplotlib import pyplot as plt
 from pandas import Timestamp
+from sklearn.preprocessing import MinMaxScaler
 from sktime.transformations.series.impute import Imputer
 from sktime.transformations.series.outlier_detection import HampelFilter
 from statsmodels.tsa.seasonal import MSTL
@@ -204,15 +205,15 @@ def builder(hp):
             rs = hidden_layers if i < nl - 1 else False
 
             if model_builder == "LSTM":
-                model.add(keras.layers.LSTM(units=hp.Int(name='units_' + str(i), min_value=u_min, max_value=u_max,
+                model.add(keras.layers.LSTM(units=hp.Int(name='units_' + str(i+1), min_value=u_min, max_value=u_max,
                                                          step=u_step),
-                                            recurrent_dropout=hp.Float(name='rec_dropout_' + str(i), min_value=dr_min,
+                                            recurrent_dropout=hp.Float(name='rec_dropout_' + str(i+1), min_value=dr_min,
                                                                        max_value=dr_max, step=dr_step),
                                             return_sequences=rs))
             if model_builder == "GRU":
-                model.add(keras.layers.GRU(units=hp.Int(name='units_' + str(i), min_value=u_min, max_value=u_max,
+                model.add(keras.layers.GRU(units=hp.Int(name='units_' + str(i+1), min_value=u_min, max_value=u_max,
                                                         step=u_step),
-                                           recurrent_dropout=hp.Float(name='rec_dropout_' + str(i), min_value=dr_min,
+                                           recurrent_dropout=hp.Float(name='rec_dropout_' + str(i+1), min_value=dr_min,
                                                                       max_value=dr_max, step=dr_step),
                                            return_sequences=rs))
 
@@ -228,7 +229,6 @@ def builder(hp):
                   metrics=[
                       keras.metrics.MeanAbsoluteError(),
                       keras.metrics.RootMeanSquaredError(),
-                      keras.metrics.MeanAbsolutePercentageError()
                   ])
 
     return model
@@ -346,12 +346,15 @@ class WindowGenerator():
         """Creates a dataset from the given DataFrame. If return_timestamps is True, the dataset will include timestamps."""
         data = np.array(df, dtype=np.float32)
 
+        # when returning timestamps shuffle needs to be set to false in order to retain the order of the timestamps
+        shuffle = not return_timestamps
+
         ds = keras.utils.timeseries_dataset_from_array(
             data=data,
             targets=None,
             sequence_length=self.total_window_size,
             sequence_stride=1,
-            shuffle=False,
+            shuffle=shuffle,
             batch_size=32,
         )
 
@@ -372,13 +375,7 @@ class WindowGenerator():
             ds = tf.data.Dataset.zip((ds, ds_t))
 
         # Default: return (inputs, labels)
-        ds = ds.map(self.split_window, num_parallel_calls=tf.data.AUTOTUNE, name='split_window')
-
-        # shuffle the dataset
-        # use recommended way by tensorflow, failsafe to not use buffer size bigger than 1000 to avoid risk of memory overflow
-        buffer_size = ds.cardinality() if (isinstance(ds.cardinality(), tf.Tensor)
-                                           and ds.cardinality() <= 1000) else tf.constant(1000, dtype=tf.int64)
-        ds = ds.shuffle(buffer_size=buffer_size, name='shuffle')
+        ds = ds.map(self.split_window, num_parallel_calls=tf.data.AUTOTUNE, name='split_window').cache()
 
         # prefetch
         ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE, name='prefetch')
@@ -412,29 +409,6 @@ class WindowGenerator():
             self._example = result
         return result
 
-    #TODO: needs testing
-    def get_test_subset(self, start_time, end_time):
-        """
-        Returns a subset of the test_ts dataset where the label timestamps fall within the given start_time and end_time (inclusive start, exclusive end).
-        Accepts any datetime format that can be parsed by ``pandas.to_datetime``. Has to be tz_aware.
-
-        :param start_time: Start of time window
-        :param end_time: End of time window
-
-        :returns tf.data.Dataset: Filtered dataset of ((inputs, labels), timestamps)
-        """
-        start_unix = (pd.to_datetime(start_time) - pd.Timestamp("1970-01-01", tz=timezone.utc)) // pd.Timedelta("1s")
-        end_unix = (pd.to_datetime(end_time) - pd.Timestamp("1970-01-01", tz=timezone.utc)) // pd.Timedelta("1s")
-
-        full_ds = self.test_ts
-
-        def filter_fn(xy, ts):
-            # only keep batch if all timesteps are it is in range
-            in_range = tf.logical_and(ts >= start_unix, ts < end_unix)
-            return tf.reduce_all(in_range)
-
-        return full_ds.filter(filter_fn)
-
     def plot(self, model=None, plot_col='de_prices_hat_rm_seasonal', max_subplots=3):
         """Plot the `inputs`, `labels`, and `predictions` for a given model.
 
@@ -458,9 +432,9 @@ class WindowGenerator():
 
         for n in range(max_n):
             plt.subplot(max_n, 1, n + 1)
-            plt.plot(self.input_indices, inputs[n, :, plot_col_index],
-                     label='Inputs', c='#840853')
             plt.ylabel(f'{pc}\n(normed and deseasonalized)')
+            plt.plot(self.input_indices, inputs[n, :, plot_col_index],
+                     label='Inputs', c='#840853', zorder=-10)
 
             if self.label_columns:
                 label_col_index = self.label_columns_indices.get(plot_col, None)
