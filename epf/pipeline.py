@@ -234,16 +234,12 @@ class EpfPipeline(object):
         train_min = train_df.min()
         train_max = train_df.max()
 
-        self.train_min = train_min # unused
-        self.train_max = train_max # unused
+        self.train_min = train_min
+        self.train_max = train_max
 
         self.train_df = (train_df - train_min) / (train_max - train_min)
         self.validation_df = (validation_df - train_min) / (train_max - train_min)
         self.test_df = (test_df - train_min) / (train_max - train_min)
-
-        #self.train_df = (train_df - train_mean) / train_std
-        #self.validation_df = (validation_df - train_mean) / train_std
-        #self.test_df = (test_df - train_mean) / train_std
 
         LOG.info(f"Finished generating training data.")
         end = timer()
@@ -251,7 +247,7 @@ class EpfPipeline(object):
         self.timings.update({'training_data_generation': t_elapsed})
         LOG.info(f"Training data generation took {t_elapsed}.")
 
-    def _prep_data(self):
+    def prep_data(self):
         """ Bundles all data preparation steps together for a single call in ``train``"""
         self._load_data()
         self._generate_features()
@@ -371,7 +367,7 @@ class EpfPipeline(object):
             'timings': None,
         }
 
-        self._prep_data()
+        self.prep_data()
 
         # generate windows
         window = WindowGenerator(train_df=self.train_df,
