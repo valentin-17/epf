@@ -233,14 +233,11 @@ def builder(hp):
 
     return model
 
-def predict_with_timestamps(model, dataset, label_columns):
+def predict_with_timestamps(model_obj, label_columns):
     """Predicts on a ((x, y), timestamps) dataset and returns a pandas DataFrame with flattened predictions and their corresponding timestamps.
 
-    :param model: Trained model
-    :type model: tf.keras.Sequential
-
-    :param dataset: Dataset yielding ((inputs, labels), timestamps)
-    :type dataset: tf.data.Dataset
+    :param model_obj: The model object created during training
+    :type model_obj: dict
 
     :param label_columns: Names of label columns (for DataFrame headers)
     :type label_columns: list[str]
@@ -250,6 +247,9 @@ def predict_with_timestamps(model, dataset, label_columns):
     all_preds = []
     all_trues = []
     all_times = []
+
+    model = model_obj['best_model']
+    dataset = model_obj['window'].test_ts
 
     for (x_batch, y_batch), ts_batch in dataset:
         preds = model.predict(x_batch, verbose=0)
