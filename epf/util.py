@@ -233,7 +233,7 @@ def builder(hp):
 
     return model
 
-def predict_with_timestamps(model_obj, label_columns):
+def predict_with_timestamps(model_obj):
     """Predicts on a ((x, y), timestamps) dataset and returns a pandas DataFrame with flattened predictions and their corresponding timestamps.
 
     :param model_obj: The model object created during training
@@ -250,6 +250,7 @@ def predict_with_timestamps(model_obj, label_columns):
 
     model = model_obj['best_model']
     dataset = model_obj['window'].test_ts
+    label_columns = model_obj['window'].label_columns
 
     for (x_batch, y_batch), ts_batch in dataset:
         preds = model.predict(x_batch, verbose=0)
