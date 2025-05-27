@@ -100,6 +100,7 @@ class EpfPipeline(object):
 
         file_paths = self._fc.INPUT_PATHS
         to_resample = self._fc.TO_RESAMPLE
+        out_steps = self._mc.OUT_STEPS
         df: list[DataFrame] = []
 
         # read all years for each raw feature and concat them in load_and_concat_data, then append them to the big df
@@ -115,6 +116,11 @@ class EpfPipeline(object):
             if data.columns.values[0] in to_resample:
                 resample_freq: int = to_resample.get(data.columns.values[0])
                 data = data[::resample_freq]
+
+            # shift explanatory data 24 hours back, now explanatory variables can be used as is in the forecasting
+            # context with no alteration to the rest of the pipeline
+            if not (data.columns.values[0] == 'de_prices'):
+                data = data.shift(-out_steps, fill_value=0)
 
             df.append(data)
 

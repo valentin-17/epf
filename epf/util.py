@@ -235,12 +235,10 @@ def builder(hp):
 
 def predict_with_timestamps(model_obj):
     """Predicts on a ((x, y), timestamps) dataset and returns a pandas DataFrame with flattened predictions and their corresponding timestamps.
+    Also reseasonalizes and denormalizes the predictions data.
 
     :param model_obj: The model object created during training
     :type model_obj: dict
-
-    :param label_columns: Names of label columns (for DataFrame headers)
-    :type label_columns: list[str]
 
     :returns pd.DataFrame: DataFrame with columns ['timestamp'] + label_columns
     """
@@ -251,6 +249,9 @@ def predict_with_timestamps(model_obj):
     model = model_obj['best_model']
     dataset = model_obj['window'].test_ts
     label_columns = model_obj['window'].label_columns
+    min = model_obj['train_min']['de_prices_hat_rm_seasonal']
+    max = model_obj['train_max']['de_prices_hat_rm_seasonal']
+    mstl = model_obj['seasonal']['de_prices_hat_rm_seasonal'].seasonal
 
     for (x_batch, y_batch), ts_batch in dataset:
         preds = model.predict(x_batch, verbose=0)
@@ -277,9 +278,18 @@ def predict_with_timestamps(model_obj):
 
     pred = pd.DataFrame(flat_preds, columns=step_columns)
     pred.insert(0, "timestamp", flat_times)
+    pred.set_index('timestamp', inplace=True)
 
     true = pd.DataFrame(flat_trues, columns=step_columns)
     true.insert(0, "timestamp", flat_times)
+    true.set_index('timestamp', inplace=True)
+
+    # denormalze
+    #pred = (pred - min) / (max - min)
+    #true = (true - min) / (max - min)
+
+    # reseasonalize
+
 
     return pred, true
 
