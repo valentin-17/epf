@@ -284,12 +284,35 @@ def predict_with_timestamps(model_obj):
     true.insert(0, "timestamp", flat_times)
     true.set_index('timestamp', inplace=True)
 
-    # denormalze
-    #pred = (pred - min) / (max - min)
-    #true = (true - min) / (max - min)
+    # denormalize
+    pred = (pred * (max - min)) + min
+    true = (true * (max - min)) + min
 
     # reseasonalize
+    horizons = range(1, 25)
+    col_names = [f't+{h}' for h in horizons]
 
+    seasonal_24 = pd.DataFrame(index=mstl.index, columns=col_names)
+    seasonal_168 = pd.DataFrame(index=mstl.index, columns=col_names)
+
+    for h in horizons:
+        shift_amount = 24 - h  # 168 hours = 1 week
+        seasonal_24[f'de_prices_hat_rm_seasonal_t+{h}'] = mstl['seasonal_24'].shift(shift_amount)
+        seasonal_168[f'de_prices_hat_rm_seasonal_t+{h}'] = mstl['seasonal_168'].shift(shift_amount)
+
+    start = pred.index[0]
+    end = pred.index[-1]
+
+    seasonal_24.index = seasonal_24.index.tz_localize(None)
+    seasonal_168.index = seasonal_24.index.tz_localize(None)
+    seasonal_24 = seasonal_24.loc[start:end]
+    seasonal_168 = seasonal_24.loc[start:end]
+
+    for col in pred.columns:
+        pred[col] = (pred[col] + sum([seasonal_24[col], seasonal_168[col]]))
+
+    for col in true.columns:
+        true[col] = (true[col] + sum([seasonal_24[col], seasonal_168[col]]))
 
     return pred, true
 
