@@ -334,8 +334,8 @@ class ModelConfig:
     SEASONALITY_PERIOD: int = 24
     INPUT_WIDTH_FACTOR: float = 1.25
 
-    MODEL_BUILDER = "LSTM" # "LSTM" or "GRU"
-    USE_HIDDEN_LAYERS: bool = False
+    MODEL_BUILDER = "GRU" # "LSTM" or "GRU"
+    USE_HIDDEN_LAYERS: bool = True
     NUM_FEATURES = sum([1 for feature in FeatureConfig.FEATURE_DICT.values() if feature['select'] == 1])
 
     # hp tuner params roughly 6000 parameters in search space

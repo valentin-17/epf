@@ -249,8 +249,8 @@ def predict_with_timestamps(model_obj):
     model = model_obj['best_model']
     dataset = model_obj['window'].test_ts
     label_columns = model_obj['window'].label_columns
-    min = model_obj['train_min']['de_prices_hat_rm_seasonal']
-    max = model_obj['train_max']['de_prices_hat_rm_seasonal']
+    t_min = model_obj['train_min']['de_prices_hat_rm_seasonal']
+    t_max = model_obj['train_max']['de_prices_hat_rm_seasonal']
     mstl = model_obj['seasonal']['de_prices_hat_rm_seasonal'].seasonal
 
     for (x_batch, y_batch), ts_batch in dataset:
@@ -285,8 +285,8 @@ def predict_with_timestamps(model_obj):
     true.set_index('timestamp', inplace=True)
 
     # denormalize
-    pred = (pred * (max - min)) + min
-    true = (true * (max - min)) + min
+    pred = (pred * (t_max - t_min)) + t_min
+    true = (true * (t_max - t_min)) + t_min
 
     # reseasonalize
     horizons = range(1, 25)
