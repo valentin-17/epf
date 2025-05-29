@@ -335,7 +335,7 @@ class ModelConfig:
     INPUT_WIDTH_FACTOR: float = 1.25
 
     MODEL_BUILDER = "GRU" # "LSTM" or "GRU"
-    USE_HIDDEN_LAYERS: bool = True
+    USE_HIDDEN_LAYERS: bool = False
     NUM_FEATURES = sum([1 for feature in FeatureConfig.FEATURE_DICT.values() if feature['select'] == 1])
 
     # hp tuner params roughly 6000 parameters in search space
