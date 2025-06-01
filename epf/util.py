@@ -256,11 +256,9 @@ def predict_with_timestamps(model_obj):
     for (x_batch, y_batch), ts_batch in dataset:
         preds = model.predict(x_batch, verbose=0)
         all_preds.append(preds)
-        all_trues.append(y_batch)
         all_times.append(ts_batch.numpy())
 
     all_preds  = np.concatenate(all_preds, axis=0)       # shape: [n, out_steps, features]
-    all_trues  = np.concatenate(all_trues, axis=0)       # shape: [n, out_steps, features]
     all_times  = np.concatenate(all_times, axis=0)       # shape: [n, out_steps]
 
     # shape is [n, out_steps, 1]
@@ -268,7 +266,6 @@ def predict_with_timestamps(model_obj):
 
     # reshape for dataFrame
     flat_preds = all_preds.reshape(n, out_steps)  # now [n, out_steps]
-    flat_trues = all_trues.reshape(n, out_steps)  # now [n, out_steps]
     flat_times = all_times[:, 0]  # use first time per sample
 
     flat_times = pd.to_datetime(flat_times, unit='s')
@@ -280,13 +277,8 @@ def predict_with_timestamps(model_obj):
     pred.insert(0, "timestamp", flat_times)
     pred.set_index('timestamp', inplace=True)
 
-    true = pd.DataFrame(flat_trues, columns=step_columns)
-    true.insert(0, "timestamp", flat_times)
-    true.set_index('timestamp', inplace=True)
-
     # denormalize
     pred = (pred * (t_max - t_min)) + t_min
-    true = (true * (t_max - t_min)) + t_min
 
     # reseasonalize
     horizons = range(1, 25)
@@ -311,10 +303,7 @@ def predict_with_timestamps(model_obj):
     for col in pred.columns:
         pred[col] = (pred[col] + sum([seasonal_24[col], seasonal_168[col]]))
 
-    for col in true.columns:
-        true[col] = (true[col] + sum([seasonal_24[col], seasonal_168[col]]))
-
-    return pred, true
+    return pred
 
 
 # code taken from [3] /references/refs.md
